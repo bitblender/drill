@@ -17,12 +17,16 @@
  */
 package org.apache.drill.exec.physical.impl;
 
-import com.google.common.collect.Maps;
 import io.netty.buffer.DrillBuf;
+
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.drill.common.exceptions.ExecutionSetupException;
 import org.apache.drill.common.exceptions.UserException;
 import org.apache.drill.common.expression.SchemaPath;
-import org.apache.drill.common.map.CaseInsensitiveMap;
 import org.apache.drill.common.types.TypeProtos.MinorType;
 import org.apache.drill.common.types.Types;
 import org.apache.drill.exec.exception.OutOfMemoryException;
@@ -31,8 +35,14 @@ import org.apache.drill.exec.expr.TypeHelper;
 import org.apache.drill.exec.ops.FragmentContext;
 import org.apache.drill.exec.ops.OperatorContext;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
-import org.apache.drill.exec.record.*;
+import org.apache.drill.exec.record.BatchSchema;
 import org.apache.drill.exec.record.BatchSchema.SelectionVectorMode;
+import org.apache.drill.exec.record.CloseableRecordBatch;
+import org.apache.drill.exec.record.MaterializedField;
+import org.apache.drill.exec.record.TypedFieldId;
+import org.apache.drill.exec.record.VectorContainer;
+import org.apache.drill.exec.record.VectorWrapper;
+import org.apache.drill.exec.record.WritableBatch;
 import org.apache.drill.exec.record.selection.SelectionVector2;
 import org.apache.drill.exec.record.selection.SelectionVector4;
 import org.apache.drill.exec.store.RecordReader;
@@ -44,11 +54,7 @@ import org.apache.drill.exec.vector.NullableVarCharVector;
 import org.apache.drill.exec.vector.SchemaChangeCallBack;
 import org.apache.drill.exec.vector.ValueVector;
 
-
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import com.google.common.collect.Maps;
 
 /**
  * Record batch used for a particular scan. Operators against one or more
@@ -61,8 +67,8 @@ public class ScanBatch implements CloseableRecordBatch {
   private final VectorContainer container = new VectorContainer();
 
   /** Fields' value vectors indexed by fields' keys. */
-  private final CaseInsensitiveMap<ValueVector> fieldVectorMap =
-      CaseInsensitiveMap.newHashMap();
+  private final Map<String, ValueVector> fieldVectorMap =
+      Maps.newHashMap();
 
   private int recordCount;
   private final FragmentContext context;
