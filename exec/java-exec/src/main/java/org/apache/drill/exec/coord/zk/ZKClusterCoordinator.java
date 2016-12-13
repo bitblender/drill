@@ -107,6 +107,7 @@ public class ZKClusterCoordinator extends ClusterCoordinator {
       @Override
       public List<ACL> getAclForPath(String path) {
         System.out.println("getAclForPath: path " + path);
+        System.out.flush();
         return ZooDefs.Ids.OPEN_ACL_UNSAFE;
       }
     })
