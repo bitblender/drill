@@ -22,14 +22,17 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.util.concurrent.GenericFutureListener;
 
+import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.memory.BufferAllocator;
 import org.apache.drill.exec.proto.BitControl.BitControlHandshake;
 import org.apache.drill.exec.proto.BitControl.RpcType;
 import org.apache.drill.exec.rpc.BasicServer;
 import org.apache.drill.exec.rpc.OutOfMemoryHandler;
 import org.apache.drill.exec.rpc.ProtobufLengthDecoder;
-import org.apache.drill.exec.rpc.Response;
+import org.apache.drill.exec.rpc.ResponseSender;
 import org.apache.drill.exec.rpc.RpcException;
+import org.apache.drill.exec.rpc.security.ServerAuthenticationHandler;
+import org.apache.drill.exec.rpc.security.AuthenticatorProvider;
 import org.apache.drill.exec.server.BootStrapContext;
 import org.apache.drill.exec.work.batch.ControlMessageHandler;
 
@@ -42,6 +45,7 @@ public class ControlServer extends BasicServer<RpcType, ControlConnection>{
   private final ConnectionManagerRegistry connectionRegistry;
   private volatile ProxyCloseHandler proxyCloseHandler;
   private BufferAllocator allocator;
+  private final AuthenticatorProvider authProvider; // null iff user auth is disabled
 
   public ControlServer(ControlMessageHandler handler, BootStrapContext context, ConnectionManagerRegistry connectionRegistry) {
     super(
@@ -51,6 +55,11 @@ public class ControlServer extends BasicServer<RpcType, ControlConnection>{
     this.handler = handler;
     this.connectionRegistry = connectionRegistry;
     this.allocator = context.getAllocator();
+    if (context.getConfig().getBoolean(ExecConstants.BIT_AUTHENTICATION_ENABLED)) {
+      authProvider = context.getAuthProvider();
+    } else {
+      authProvider = null;
+    }
   }
 
   @Override
@@ -59,8 +68,9 @@ public class ControlServer extends BasicServer<RpcType, ControlConnection>{
   }
 
   @Override
-  protected Response handle(ControlConnection connection, int rpcType, ByteBuf pBody, ByteBuf dBody) throws RpcException {
-    return handler.handle(connection, rpcType, pBody, dBody);
+  protected void handle(ControlConnection connection, int rpcType, ByteBuf pBody, ByteBuf dBody,
+                        ResponseSender sender) throws RpcException {
+    connection.getCurrentHandler().handle(connection, rpcType, pBody, dBody, sender);
   }
 
   @Override
@@ -72,7 +82,9 @@ public class ControlServer extends BasicServer<RpcType, ControlConnection>{
   @Override
   public ControlConnection initRemoteConnection(SocketChannel channel) {
     super.initRemoteConnection(channel);
-    return new ControlConnection("control server", channel, this, allocator);
+    return new ControlConnection("control server", channel, this, allocator, authProvider,
+        authProvider == null ? handler : new ServerAuthenticationHandler<>(handler, RpcType.SASL_MESSAGE_VALUE,
+            RpcType.SASL_MESSAGE));
   }
 
 
@@ -100,7 +112,12 @@ public class ControlServer extends BasicServer<RpcType, ControlConnection>{
         // add to the connection manager.
         manager.addExternalConnection(connection);
 
-        return BitControlHandshake.newBuilder().setRpcVersion(ControlRpcConfig.RPC_VERSION).build();
+        final BitControlHandshake.Builder builder = BitControlHandshake.newBuilder();
+        builder.setRpcVersion(ControlRpcConfig.RPC_VERSION);
+        if (authProvider != null) {
+          builder.addAllAuthenticationMechanisms(authProvider.getAllFactoryNames());
+        }
+        return builder.build();
       }
 
     };

@@ -20,19 +20,26 @@ package org.apache.drill.exec.rpc.control;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.socket.SocketChannel;
 
+import java.io.IOException;
 import java.util.UUID;
 
 import org.apache.drill.exec.memory.BufferAllocator;
 import org.apache.drill.exec.proto.BitControl.RpcType;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
-import org.apache.drill.exec.rpc.RemoteConnection;
+import org.apache.drill.exec.rpc.AbstractServerConnection;
+import org.apache.drill.exec.rpc.ClientConnection;
+import org.apache.drill.exec.rpc.RequestHandler;
 import org.apache.drill.exec.rpc.RpcBus;
 import org.apache.drill.exec.rpc.RpcOutcomeListener;
 
 import com.google.protobuf.MessageLite;
+import org.apache.drill.exec.rpc.security.AuthenticatorProvider;
 
-public class ControlConnection extends RemoteConnection {
-  static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ControlConnection.class);
+import javax.security.sasl.SaslClient;
+import javax.security.sasl.SaslException;
+
+public class ControlConnection extends AbstractServerConnection<ControlConnection> implements ClientConnection {
+  private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ControlConnection.class);
 
   private final RpcBus<RpcType, ControlConnection> bus;
   private final BufferAllocator allocator;
@@ -40,9 +47,12 @@ public class ControlConnection extends RemoteConnection {
   private volatile boolean active = false;
   private final UUID id;
 
+  private SaslClient saslClient;
+
   public ControlConnection(String name, SocketChannel channel, RpcBus<RpcType, ControlConnection> bus,
-      BufferAllocator allocator) {
-    super(channel, name);
+                           BufferAllocator allocator, AuthenticatorProvider authProvider,
+                           RequestHandler<ControlConnection> handler) {
+    super(channel, name, authProvider, handler);
     this.bus = bus;
     this.id = UUID.randomUUID();
     this.allocator = allocator;
@@ -54,10 +64,6 @@ public class ControlConnection extends RemoteConnection {
     active = true;
   }
 
-  protected DrillbitEndpoint getEndpoint() {
-    return endpoint;
-  }
-
   public <SEND extends MessageLite, RECEIVE extends MessageLite> void send(RpcOutcomeListener<RECEIVE> outcomeListener,
       RpcType rpcType, SEND protobufBody, Class<RECEIVE> clazz, ByteBuf... dataBodies) {
     bus.send(outcomeListener, this, rpcType, protobufBody, clazz, dataBodies);
@@ -66,10 +72,6 @@ public class ControlConnection extends RemoteConnection {
   public <SEND extends MessageLite, RECEIVE extends MessageLite> void sendUnsafe(RpcOutcomeListener<RECEIVE> outcomeListener,
       RpcType rpcType, SEND protobufBody, Class<RECEIVE> clazz, ByteBuf... dataBodies) {
     bus.send(outcomeListener, this, rpcType, protobufBody, clazz, true, dataBodies);
-  }
-
-  public void disable() {
-    active = false;
   }
 
   @Override
@@ -110,6 +112,36 @@ public class ControlConnection extends RemoteConnection {
   @Override
   public BufferAllocator getAllocator() {
     return allocator;
+  }
+
+  @Override
+  public void setSaslClient(final SaslClient saslClient) {
+    assert this.saslClient == null;
+    this.saslClient = saslClient;
+  }
+
+  @Override
+  public SaslClient getSaslClient() {
+    assert saslClient != null;
+    return saslClient;
+  }
+
+  @Override
+  public void finalizeSession() throws IOException {
+     // TODO: MUST FIX
+  }
+
+  @Override
+  public void close() {
+    try {
+      if (saslClient != null) {
+        saslClient.dispose();
+        saslClient = null;
+      }
+    } catch (final SaslException e) {
+      logger.warn("Unclean disposal", e);
+    }
+    super.close();
   }
 
 }

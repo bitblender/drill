@@ -39,8 +39,13 @@ public class ControlConnectionManager extends ReconnectingConnection<ControlConn
 
   public ControlConnectionManager(BufferAllocator allocator, DrillbitEndpoint remoteEndpoint,
       DrillbitEndpoint localIdentity, ControlMessageHandler handler, BootStrapContext context) {
-    super(BitControlHandshake.newBuilder().setRpcVersion(ControlRpcConfig.RPC_VERSION).setEndpoint(localIdentity).build(), remoteEndpoint.getAddress(), remoteEndpoint.getControlPort());
-    assert remoteEndpoint != null : "Endpoint cannot be null.";
+    super(
+        BitControlHandshake.newBuilder()
+            .setRpcVersion(ControlRpcConfig.RPC_VERSION)
+            .setEndpoint(localIdentity)
+            .build(),
+        remoteEndpoint.getAddress(),
+        remoteEndpoint.getControlPort());
     assert remoteEndpoint.getAddress() != null && !remoteEndpoint.getAddress().isEmpty(): "Endpoint address cannot be null.";
     assert remoteEndpoint.getControlPort() > 0 : String.format("Bit Port must be set to a port between 1 and 65k.  Was set to %d.", remoteEndpoint.getControlPort());
 
