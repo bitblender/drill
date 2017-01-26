@@ -22,6 +22,7 @@ import org.apache.drill.exec.proto.BitData.BitServerHandshake;
 import org.apache.drill.exec.proto.BitData.FragmentRecordBatch;
 import org.apache.drill.exec.proto.BitData.RpcType;
 import org.apache.drill.exec.proto.GeneralRPCProtos.Ack;
+import org.apache.drill.exec.proto.UserBitShared.SaslMessage;
 import org.apache.drill.exec.rpc.RpcException;
 
 import com.google.protobuf.MessageLite;
@@ -29,20 +30,20 @@ import com.google.protobuf.MessageLite;
 public class DataDefaultInstanceHandler {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DataDefaultInstanceHandler.class);
 
-  // TODO (MUST FIX)
   public static MessageLite getResponseDefaultInstanceClient(int rpcType) throws RpcException {
     switch (rpcType) {
     case RpcType.ACK_VALUE:
       return Ack.getDefaultInstance();
     case RpcType.HANDSHAKE_VALUE:
       return BitServerHandshake.getDefaultInstance();
+    case RpcType.SASL_MESSAGE_VALUE:
+      return SaslMessage.getDefaultInstance();
 
     default:
       throw new UnsupportedOperationException();
     }
   }
 
-  // TODO (MUST FIX)
   public static MessageLite getResponseDefaultInstanceServer(int rpcType) throws RpcException {
     switch (rpcType) {
     case RpcType.ACK_VALUE:
@@ -51,6 +52,8 @@ public class DataDefaultInstanceHandler {
       return BitClientHandshake.getDefaultInstance();
     case RpcType.REQ_RECORD_BATCH_VALUE:
       return FragmentRecordBatch.getDefaultInstance();
+    case RpcType.SASL_MESSAGE_VALUE:
+      return SaslMessage.getDefaultInstance();
 
     default:
       throw new UnsupportedOperationException();
