@@ -29,7 +29,7 @@ import com.google.protobuf.MessageLite;
 public class DataDefaultInstanceHandler {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DataDefaultInstanceHandler.class);
 
-
+  // TODO (MUST FIX)
   public static MessageLite getResponseDefaultInstanceClient(int rpcType) throws RpcException {
     switch (rpcType) {
     case RpcType.ACK_VALUE:
@@ -42,6 +42,7 @@ public class DataDefaultInstanceHandler {
     }
   }
 
+  // TODO (MUST FIX)
   public static MessageLite getResponseDefaultInstanceServer(int rpcType) throws RpcException {
     switch (rpcType) {
     case RpcType.ACK_VALUE:

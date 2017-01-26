@@ -24,12 +24,13 @@ import java.util.UUID;
 
 import org.apache.drill.exec.memory.BufferAllocator;
 import org.apache.drill.exec.proto.BitData.RpcType;
-import org.apache.drill.exec.rpc.RemoteConnection;
+import org.apache.drill.exec.rpc.AbstractClientConnection;
 import org.apache.drill.exec.rpc.RpcOutcomeListener;
 
 import com.google.protobuf.MessageLite;
 
-public class DataClientConnection extends RemoteConnection{
+// data connection on client-side (i.e. bit making request)
+public class DataClientConnection extends AbstractClientConnection {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DataClientConnection.class);
 
   private final DataClient client;
@@ -82,6 +83,4 @@ public class DataClientConnection extends RemoteConnection{
     }
     return true;
   }
-
-
 }

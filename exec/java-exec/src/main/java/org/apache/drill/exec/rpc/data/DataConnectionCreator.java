@@ -50,7 +50,6 @@ public class DataConnectionCreator implements AutoCloseable {
       WorkEventBus workBus,
       WorkerBee bee,
       boolean allowPortHunting) {
-    super();
     this.context = context;
     this.workBus = workBus;
     this.bee = bee;
