@@ -20,83 +20,81 @@ package org.apache.drill.exec.rpc.user;
 import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.UUID;
-import java.util.concurrent.Executor;
 
+import io.netty.util.concurrent.Future;
+import io.netty.util.concurrent.GenericFutureListener;
+import org.apache.drill.common.config.ConnectionParameters;
 import org.apache.drill.common.config.DrillConfig;
-import org.apache.drill.common.scanner.persistence.ScanResult;
 import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.exception.DrillbitStartupException;
 import org.apache.drill.exec.memory.BufferAllocator;
 import org.apache.drill.exec.physical.impl.materialize.QueryWritableBatch;
 import org.apache.drill.exec.proto.GeneralRPCProtos.Ack;
 import org.apache.drill.exec.proto.GeneralRPCProtos.RpcMode;
-import org.apache.drill.exec.proto.UserBitShared.QueryId;
 import org.apache.drill.exec.proto.UserBitShared.QueryResult;
+import org.apache.drill.exec.proto.UserBitShared.UserCredentials;
 import org.apache.drill.exec.proto.UserProtos.BitToUserHandshake;
-import org.apache.drill.exec.proto.UserProtos.CreatePreparedStatementReq;
-import org.apache.drill.exec.proto.UserProtos.GetCatalogsReq;
-import org.apache.drill.exec.proto.UserProtos.GetColumnsReq;
-import org.apache.drill.exec.proto.UserProtos.GetQueryPlanFragments;
-import org.apache.drill.exec.proto.UserProtos.GetSchemasReq;
-import org.apache.drill.exec.proto.UserProtos.GetTablesReq;
 import org.apache.drill.exec.proto.UserProtos.HandshakeStatus;
 import org.apache.drill.exec.proto.UserProtos.Property;
 import org.apache.drill.exec.proto.UserProtos.RpcType;
-import org.apache.drill.exec.proto.UserProtos.RunQuery;
 import org.apache.drill.exec.proto.UserProtos.UserProperties;
 import org.apache.drill.exec.proto.UserProtos.UserToBitHandshake;
+import org.apache.drill.exec.rpc.AbstractRemoteConnection;
 import org.apache.drill.exec.rpc.BasicServer;
 import org.apache.drill.exec.rpc.OutOfMemoryHandler;
 import org.apache.drill.exec.rpc.OutboundRpcMessage;
 import org.apache.drill.exec.rpc.ProtobufLengthDecoder;
-import org.apache.drill.exec.rpc.RemoteConnection;
-import org.apache.drill.exec.rpc.Response;
 import org.apache.drill.exec.rpc.ResponseSender;
 import org.apache.drill.exec.rpc.RpcException;
 import org.apache.drill.exec.rpc.RpcOutcomeListener;
-import org.apache.drill.exec.rpc.user.UserServer.UserClientConnectionImpl;
+import org.apache.drill.exec.rpc.AbstractServerConnection;
+import org.apache.drill.exec.rpc.security.ServerAuthenticationHandler;
+import org.apache.drill.exec.rpc.user.UserServer.BitToUserConnection;
+import org.apache.drill.exec.rpc.security.AuthenticatorProvider;
+import org.apache.drill.exec.rpc.security.plain.PlainFactory;
 import org.apache.drill.exec.rpc.user.security.UserAuthenticationException;
-import org.apache.drill.exec.rpc.user.security.UserAuthenticator;
-import org.apache.drill.exec.rpc.user.security.UserAuthenticatorFactory;
+import org.apache.drill.exec.server.BootStrapContext;
 import org.apache.drill.exec.work.user.UserWorker;
 
-import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufInputStream;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
+import org.apache.hadoop.security.HadoopKerberosName;
 
-public class UserServer extends BasicServer<RpcType, UserClientConnectionImpl> {
+public class UserServer extends BasicServer<RpcType, BitToUserConnection> {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(UserServer.class);
   private static final String SERVER_NAME = "Apache Drill Server";
 
   final UserWorker worker;
   final BufferAllocator alloc;
-  final UserAuthenticator authenticator;
+  final AuthenticatorProvider authProvider; // null iff user auth is disabled
   final InboundImpersonationManager impersonationManager;
+  final UserServerRequestHandler handler;
 
-  public UserServer(DrillConfig config, ScanResult classpathScan, BufferAllocator alloc, EventLoopGroup eventLoopGroup,
-      UserWorker worker, Executor executor) throws DrillbitStartupException {
-    super(UserRpcConfig.getMapping(config, executor),
+  public UserServer(BootStrapContext context, BufferAllocator alloc, EventLoopGroup eventLoopGroup,
+                    UserWorker worker) throws DrillbitStartupException {
+    super(UserRpcConfig.getMapping(context.getConfig(), context.getExecutor()),
         alloc.getAsByteBufAllocator(),
         eventLoopGroup);
     this.worker = worker;
     this.alloc = alloc;
-    // TODO: move this up
+    final DrillConfig config = context.getConfig();
     if (config.getBoolean(ExecConstants.USER_AUTHENTICATION_ENABLED)) {
-      authenticator = UserAuthenticatorFactory.createAuthenticator(config, classpathScan);
+      authProvider = context.getAuthProvider();
+      if (authProvider.getAllFactoryNames().size() == 0) {
+        throw new DrillbitStartupException("Authentication enabled, but no mechanisms found. Please check " +
+            "authentication configuration.");
+      }
     } else {
-      authenticator = null;
+      authProvider = null;
     }
-    if (config.getBoolean(ExecConstants.IMPERSONATION_ENABLED)) {
-      impersonationManager = new InboundImpersonationManager();
-    } else {
-      impersonationManager = null;
-    }
+    impersonationManager = !config.getBoolean(ExecConstants.IMPERSONATION_ENABLED) ? null :
+        new InboundImpersonationManager();
+    handler = new UserServerRequestHandler(worker);
   }
 
   @Override
@@ -111,97 +109,14 @@ public class UserServer extends BasicServer<RpcType, UserClientConnectionImpl> {
   }
 
   @Override
-  protected void handle(UserClientConnectionImpl connection, int rpcType, ByteBuf pBody, ByteBuf dBody,
-      ResponseSender responseSender) throws RpcException {
-    switch (rpcType) {
-
-    case RpcType.RUN_QUERY_VALUE:
-      logger.debug("Received query to run.  Returning query handle.");
-      try {
-        final RunQuery query = RunQuery.PARSER.parseFrom(new ByteBufInputStream(pBody));
-        final QueryId queryId = worker.submitWork(connection, query);
-        responseSender.send(new Response(RpcType.QUERY_HANDLE, queryId));
-        break;
-      } catch (InvalidProtocolBufferException e) {
-        throw new RpcException("Failure while decoding RunQuery body.", e);
-      }
-
-    case RpcType.CANCEL_QUERY_VALUE:
-      try {
-        final QueryId queryId = QueryId.PARSER.parseFrom(new ByteBufInputStream(pBody));
-        final Ack ack = worker.cancelQuery(queryId);
-        responseSender.send(new Response(RpcType.ACK, ack));
-        break;
-      } catch (InvalidProtocolBufferException e) {
-        throw new RpcException("Failure while decoding QueryId body.", e);
-      }
-
-    case RpcType.RESUME_PAUSED_QUERY_VALUE:
-      try {
-        final QueryId queryId = QueryId.PARSER.parseFrom(new ByteBufInputStream(pBody));
-        final Ack ack = worker.resumeQuery(queryId);
-        responseSender.send(new Response(RpcType.ACK, ack));
-        break;
-      } catch (final InvalidProtocolBufferException e) {
-        throw new RpcException("Failure while decoding QueryId body.", e);
-      }
-    case RpcType.GET_QUERY_PLAN_FRAGMENTS_VALUE:
-      try {
-        final GetQueryPlanFragments req = GetQueryPlanFragments.PARSER.parseFrom(new ByteBufInputStream(pBody));
-        responseSender.send(new Response(RpcType.QUERY_PLAN_FRAGMENTS, worker.getQueryPlan(connection, req)));
-        break;
-      } catch(final InvalidProtocolBufferException e) {
-        throw new RpcException("Failure while decoding GetQueryPlanFragments body.", e);
-      }
-    case RpcType.GET_CATALOGS_VALUE:
-      try {
-        final GetCatalogsReq req = GetCatalogsReq.PARSER.parseFrom(new ByteBufInputStream(pBody));
-        worker.submitCatalogMetadataWork(connection.getSession(), req, responseSender);
-        break;
-      } catch (final InvalidProtocolBufferException e) {
-        throw new RpcException("Failure while decoding GetCatalogsReq body.", e);
-      }
-    case RpcType.GET_SCHEMAS_VALUE:
-      try {
-        final GetSchemasReq req = GetSchemasReq.PARSER.parseFrom(new ByteBufInputStream(pBody));
-        worker.submitSchemasMetadataWork(connection.getSession(), req, responseSender);
-        break;
-      } catch (final InvalidProtocolBufferException e) {
-        throw new RpcException("Failure while decoding GetSchemasReq body.", e);
-      }
-    case RpcType.GET_TABLES_VALUE:
-      try {
-        final GetTablesReq req = GetTablesReq.PARSER.parseFrom(new ByteBufInputStream(pBody));
-        worker.submitTablesMetadataWork(connection.getSession(), req, responseSender);
-        break;
-      } catch (final InvalidProtocolBufferException e) {
-        throw new RpcException("Failure while decoding GetTablesReq body.", e);
-      }
-    case RpcType.GET_COLUMNS_VALUE:
-      try {
-        final GetColumnsReq req = GetColumnsReq.PARSER.parseFrom(new ByteBufInputStream(pBody));
-        worker.submitColumnsMetadataWork(connection.getSession(), req, responseSender);
-        break;
-      } catch (final InvalidProtocolBufferException e) {
-        throw new RpcException("Failure while decoding GetColumnsReq body.", e);
-      }
-    case RpcType.CREATE_PREPARED_STATEMENT_VALUE:
-      try {
-        final CreatePreparedStatementReq req =
-            CreatePreparedStatementReq.PARSER.parseFrom(new ByteBufInputStream(pBody));
-        worker.submitPreparedStatementWork(connection, req, responseSender);
-        break;
-      } catch (final InvalidProtocolBufferException e) {
-        throw new RpcException("Failure while decoding CreatePreparedStatementReq body.", e);
-      }
-    default:
-      throw new UnsupportedOperationException(String.format("UserServer received rpc of unknown type.  Type was %d.", rpcType));
-    }
+  protected void handle(BitToUserConnection connection, int rpcType, ByteBuf pBody, ByteBuf dBody,
+                        ResponseSender responseSender) throws RpcException {
+    connection.getCurrentHandler().handle(connection, rpcType, pBody, dBody, responseSender);
   }
 
   /**
    * Interface for getting user session properties and interacting with user connection. Separating this interface from
-   * {@link RemoteConnection} implementation for user connection:
+   * {@link AbstractRemoteConnection} implementation for user connection:
    * <p><ul>
    *   <li> Connection is passed to Foreman and Screen operators. Instead passing this interface exposes few details.
    *   <li> Makes it easy to have wrappers around user connection which can be helpful to tap the messages and data
@@ -241,27 +156,54 @@ public class UserServer extends BasicServer<RpcType, UserClientConnectionImpl> {
   }
 
   /**
-   * {@link RemoteConnection} implementation for user connection. Also implements {@link UserClientConnection}.
+   * {@link AbstractRemoteConnection} implementation for user connection. Also implements {@link UserClientConnection}.
    */
-  public class UserClientConnectionImpl extends RemoteConnection implements UserClientConnection {
+  public class BitToUserConnection extends AbstractServerConnection<BitToUserConnection>
+      implements UserClientConnection {
 
     private UserSession session;
+    private UserToBitHandshake inbound;
 
-    public UserClientConnectionImpl(SocketChannel channel) {
-      super(channel, "user client");
+    public BitToUserConnection(SocketChannel channel) {
+      super(channel, "user client", authProvider,
+          authProvider == null ? handler : new ServerAuthenticationHandler<>(handler, RpcType.SASL_MESSAGE_VALUE,
+              RpcType.SASL_MESSAGE));
     }
 
     void disableReadTimeout() {
       getChannel().pipeline().remove(BasicServer.TIMEOUT_HANDLER);
     }
 
-    void setUser(final UserToBitHandshake inbound) throws IOException {
+    void setHandshake(final UserToBitHandshake inbound) {
+      this.inbound = inbound;
+    }
+
+    @Override
+    public void finalizeSession() throws IOException {
+      final String authorizationID = getSaslServer().getAuthorizationID();
+      final String userName = new HadoopKerberosName(authorizationID).getShortName();
+      logger.debug("Created session for {}", userName);
+      finalizeSession(userName);
+    }
+
+    /**
+     * Sets the user on the session, and finalizes the session.
+     *
+     * @param userName user name to set on the session
+     *
+     */
+    void finalizeSession(String userName) {
+      // create a session
       session = UserSession.Builder.newBuilder()
-          .withCredentials(inbound.getCredentials())
+          .withCredentials(UserCredentials.newBuilder()
+              .setUserName(userName)
+              .build())
           .withOptionManager(worker.getSystemOptions())
           .withUserProperties(inbound.getProperties())
           .setSupportComplexTypes(inbound.getSupportComplexTypes())
           .build();
+
+      // if inbound impersonation is enabled and a target is mentioned
       final String targetName = session.getTargetUserName();
       if (impersonationManager != null && targetName != null) {
         impersonationManager.replaceUserOnSession(targetName, session);
@@ -292,7 +234,13 @@ public class UserServer extends BasicServer<RpcType, UserClientConnectionImpl> {
 
     @Override
     public ChannelFuture getChannelClosureFuture() {
-      return getChannel().closeFuture();
+      return getChannel().closeFuture()
+          .addListener(new GenericFutureListener<Future<? super Void>>() {
+            @Override
+            public void operationComplete(Future<? super Void> future) throws Exception {
+              session.close();
+            }
+          });
     }
 
     @Override
@@ -301,25 +249,19 @@ public class UserServer extends BasicServer<RpcType, UserClientConnectionImpl> {
     }
 
     @Override
-    public void closeSession() {
-      session.close();
-    }
-
-    @Override
     public void close() {
-      closeSession();
       super.close();
     }
   }
 
   @Override
-  public UserClientConnectionImpl initRemoteConnection(SocketChannel channel) {
+  public BitToUserConnection initRemoteConnection(SocketChannel channel) {
     super.initRemoteConnection(channel);
-    return new UserClientConnectionImpl(channel);
+    return new BitToUserConnection(channel);
   }
 
   @Override
-  protected ServerHandshakeHandler<UserToBitHandshake> getHandshakeHandler(final UserClientConnectionImpl connection) {
+  protected ServerHandshakeHandler<UserToBitHandshake> getHandshakeHandler(final BitToUserConnection connection) {
 
     return new ServerHandshakeHandler<UserToBitHandshake>(RpcType.HANDSHAKE, UserToBitHandshake.PARSER){
 
@@ -329,7 +271,8 @@ public class UserServer extends BasicServer<RpcType, UserClientConnectionImpl> {
         OutboundRpcMessage msg = new OutboundRpcMessage(RpcMode.RESPONSE, this.handshakeType, coordinationId, handshakeResp);
         ctx.writeAndFlush(msg);
 
-        if (handshakeResp.getStatus() != HandshakeStatus.SUCCESS) {
+        if (handshakeResp.getStatus() != HandshakeStatus.SUCCESS &&
+            handshakeResp.getStatus() != HandshakeStatus.AUTH_REQUIRED) {
           // If handling handshake results in an error, throw an exception to terminate the connection.
           throw new RpcException("Handshake request failed: " + handshakeResp.getErrorMessage());
         }
@@ -338,7 +281,6 @@ public class UserServer extends BasicServer<RpcType, UserClientConnectionImpl> {
       @Override
       public BitToUserHandshake getHandshakeResponse(UserToBitHandshake inbound) throws Exception {
         logger.trace("Handling handshake from user to bit. {}", inbound);
-
 
         // if timeout is unsupported or is set to false, disable timeout.
         if (!inbound.hasSupportTimeout() || !inbound.getSupportTimeout()) {
@@ -358,25 +300,58 @@ public class UserServer extends BasicServer<RpcType, UserClientConnectionImpl> {
             return handleFailure(respBuilder, HandshakeStatus.RPC_VERSION_MISMATCH, errMsg, null);
           }
 
-          if (authenticator != null) {
+          connection.setHandshake(inbound);
+
+          if (authProvider == null) { // authentication is disabled
+            connection.finalizeSession(inbound.getCredentials().getUserName());
+            respBuilder.setStatus(HandshakeStatus.SUCCESS);
+            return respBuilder.build();
+          }
+
+          final boolean clientSupportsSasl = inbound.hasSupportSasl() && inbound.getSupportSasl();
+          if (!clientSupportsSasl) { // for backward compatibility < 1.10
+            final String userName = inbound.getCredentials().getUserName();
+            if (logger.isTraceEnabled()) {
+              logger.trace("User {} on connection {} is likely using an older client.",
+                  userName, connection.getRemoteAddress());
+            }
             try {
               String password = "";
               final UserProperties props = inbound.getProperties();
               for (int i = 0; i < props.getPropertiesCount(); i++) {
                 Property prop = props.getProperties(i);
-                if (UserSession.PASSWORD.equalsIgnoreCase(prop.getKey())) {
+                if (ConnectionParameters.PASSWORD.equalsIgnoreCase(prop.getKey())) {
                   password = prop.getValue();
                   break;
                 }
               }
-              authenticator.authenticate(inbound.getCredentials().getUserName(), password);
+              final PlainFactory plainMechanism = authProvider.getPlainFactory();
+              if (plainMechanism == null) {
+                throw new UserAuthenticationException("The server no longer supports username/password" +
+                    " based authentication. Please talk to your system administrator.");
+              }
+              plainMechanism.getAuthenticator()
+                  .authenticate(userName, password);
+              connection.changeHandlerTo(handler);
+              connection.finalizeSession(userName);
+              respBuilder.setStatus(HandshakeStatus.SUCCESS);
+              if (logger.isTraceEnabled()) {
+                logger.trace("Authenticated {} successfully using PLAIN from {}", userName,
+                    connection.getRemoteAddress());
+              }
+              return respBuilder.build();
             } catch (UserAuthenticationException ex) {
               return handleFailure(respBuilder, HandshakeStatus.AUTH_FAILED, ex.getMessage(), ex);
             }
           }
 
-          connection.setUser(inbound);
-          return respBuilder.setStatus(HandshakeStatus.SUCCESS).build();
+          // mention server's authentication capabilities
+          respBuilder.addAllAuthenticationMechanisms(authProvider.getAllFactoryNames());
+
+          // for now, this means PLAIN credentials will be sent over twice
+          // (during handshake and during sasl exchange)
+          respBuilder.setStatus(HandshakeStatus.AUTH_REQUIRED);
+          return respBuilder.build();
         } catch (Exception e) {
           return handleFailure(respBuilder, HandshakeStatus.UNKNOWN_FAILURE, e.getMessage(), e);
         }
@@ -418,12 +393,12 @@ public class UserServer extends BasicServer<RpcType, UserClientConnectionImpl> {
 
   @Override
   public void close() throws IOException {
-    try {
-      if (authenticator != null) {
-        authenticator.close();
+    if (authProvider != null) {
+      try {
+        authProvider.close();
+      } catch (Exception e) {
+        logger.warn("Failure closing authentication factory.", e);
       }
-    } catch (Exception e) {
-      logger.warn("Failure closing authenticator.", e);
     }
     super.close();
   }
