@@ -18,8 +18,9 @@
 package org.apache.drill.exec.rpc;
 
 import io.netty.channel.socket.SocketChannel;
-import org.apache.drill.exec.rpc.security.AuthenticatorProvider;
+import org.apache.drill.exec.memory.BufferAllocator;
 import org.apache.hadoop.security.UserGroupInformation;
+import org.slf4j.Logger;
 
 import javax.security.auth.login.LoginException;
 import javax.security.sasl.SaslException;
@@ -29,30 +30,41 @@ import java.io.IOException;
 public abstract class AbstractServerConnection<C extends AbstractServerConnection>
     extends AbstractRemoteConnection
     implements ServerConnection<C> {
-  private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(AbstractServerConnection.class);
 
-  private final AuthenticatorProvider authProvider;
+  private final ServerConnectionConfig config;
 
   private RequestHandler<C> currentHandler;
   private SaslServer saslServer;
 
-  public AbstractServerConnection(SocketChannel channel, String name, AuthenticatorProvider authProvider,
+  public AbstractServerConnection(SocketChannel channel, String name, ServerConnectionConfig config,
                                   RequestHandler<C> handler) {
     super(channel, name);
-    assert handler != null;
-    this.authProvider = authProvider;
-    currentHandler = handler;
+    this.config = config;
+    this.currentHandler = handler;
+  }
+
+  public AbstractServerConnection(SocketChannel channel, ServerConnectionConfig config,
+                                  RequestHandler<C> handler) {
+    this(channel, config.getName(), config, handler);
   }
 
   @Override
+  public BufferAllocator getAllocator() {
+    return config.getAllocator();
+  }
+
+  protected abstract Logger getLogger();
+
+  @Override
   public void initSaslServer(String mechanismName) throws IllegalArgumentException, SaslException {
-    assert saslServer == null && authProvider != null;
+    assert saslServer == null && config.getAuthProvider() != null;
     try {
-      this.saslServer = authProvider.getAuthenticatorFactory(mechanismName)
+      this.saslServer = config.getAuthProvider()
+          .getAuthenticatorFactory(mechanismName)
           .createSaslServer(UserGroupInformation.getLoginUser(), null
               /** properties; default QOP is auth */);
     } catch (final IOException e) {
-      logger.debug("Login failed.", e);
+      getLogger().debug("Login failed.", e);
       final Throwable cause = e.getCause();
       if (cause instanceof LoginException) {
         throw new SaslException("Failed to login.", cause);
@@ -89,7 +101,7 @@ public abstract class AbstractServerConnection<C extends AbstractServerConnectio
         saslServer = null;
       }
     } catch (final SaslException e) {
-      logger.warn("Unclean disposal.", e);
+      getLogger().warn("Unclean disposal.", e);
     }
     super.close();
   }

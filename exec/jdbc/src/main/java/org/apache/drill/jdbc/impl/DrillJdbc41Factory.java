@@ -183,7 +183,7 @@ public class DrillJdbc41Factory extends DrillFactory {
             resultSetType, resultSetConcurrency, resultSetHoldability);
     }
 
-    // These don't need throwIfClosed(), since getParameter already calls it.
+    // These don't need throwIfClosed(), since getProperty already calls it.
 
     @Override
     public void setRowId(int parameterIndex, RowId x) throws SQLException {

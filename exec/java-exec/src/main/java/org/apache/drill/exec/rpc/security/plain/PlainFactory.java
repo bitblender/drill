@@ -17,7 +17,7 @@
  */
 package org.apache.drill.exec.rpc.security.plain;
 
-import org.apache.drill.common.config.ConnectionParameters;
+import org.apache.drill.common.config.DrillProperties;
 import org.apache.drill.exec.rpc.security.AuthenticatorFactory;
 import org.apache.drill.exec.rpc.security.FastSaslServerFactory;
 import org.apache.drill.exec.rpc.security.FastSaslClientFactory;
@@ -91,8 +91,8 @@ public class PlainFactory implements AuthenticatorFactory {
   @Override
   public SaslClient createSaslClient(final UserGroupInformation ugi, final Map<String, ?> properties)
       throws SaslException {
-    final String userName = (String) properties.get(ConnectionParameters.USER);
-    final String password = (String) properties.get(ConnectionParameters.PASSWORD);
+    final String userName = (String) properties.get(DrillProperties.USER);
+    final String password = (String) properties.get(DrillProperties.PASSWORD);
 
     return FastSaslClientFactory.getInstance().createSaslClient(new String[]{SIMPLE_NAME},
         null /** authorization ID */, null, null, properties, new CallbackHandler() {

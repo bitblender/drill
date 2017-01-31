@@ -22,8 +22,6 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.util.concurrent.GenericFutureListener;
 
-import org.apache.drill.common.config.ConnectionParameters;
-import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.memory.BufferAllocator;
 import org.apache.drill.exec.proto.BitControl.BitControlHandshake;
 import org.apache.drill.exec.proto.BitControl.RpcType;
@@ -36,66 +34,47 @@ import org.apache.drill.exec.rpc.ResponseSender;
 import org.apache.drill.exec.rpc.RpcCommand;
 import org.apache.drill.exec.rpc.RpcException;
 import org.apache.drill.exec.rpc.RpcOutcomeListener;
-import org.apache.drill.exec.rpc.security.AuthenticatorProvider;
 import org.apache.drill.exec.rpc.security.FailingRequestHandler;
-import org.apache.drill.exec.server.BootStrapContext;
-import org.apache.drill.exec.work.batch.ControlMessageHandler;
 
 import com.google.protobuf.MessageLite;
-import org.apache.hadoop.security.HadoopKerberosName;
 import org.apache.hadoop.security.UserGroupInformation;
 
 import javax.security.sasl.SaslClient;
 import javax.security.sasl.SaslException;
 import java.io.IOException;
-import java.util.Properties;
 
 public class ControlClient extends BasicClient<RpcType, ControlConnection, BitControlHandshake, BitControlHandshake>{
 
   // private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ControlClient.class);
 
-  private final ControlMessageHandler handler;
   private final DrillbitEndpoint remoteEndpoint;
   private volatile ControlConnection connection;
   private final ControlConnectionManager.CloseHandlerCreator closeHandlerFactory;
-  private final DrillbitEndpoint localIdentity;
-  private final BufferAllocator allocator;
-  private final AuthenticatorProvider authProvider; // null iff user auth is disabled
-  private final String authMechanismToUse;
+  private final ServerConnectionConfigImpl config;
 
-  public ControlClient(BufferAllocator allocator, DrillbitEndpoint remoteEndpoint, DrillbitEndpoint localEndpoint,
-                       ControlMessageHandler handler, BootStrapContext context,
+  public ControlClient(ServerConnectionConfigImpl config, DrillbitEndpoint remoteEndpoint,
                        ControlConnectionManager.CloseHandlerCreator closeHandlerFactory) {
-    super(ControlRpcConfig.getMapping(context.getConfig(), context.getExecutor()),
-        allocator.getAsByteBufAllocator(),
-        context.getBitLoopGroup(),
+    super(ControlRpcConfig.getMapping(config.getBootstrapContext().getConfig(),
+        config.getBootstrapContext().getExecutor()),
+        config.getAllocator().getAsByteBufAllocator(),
+        config.getBootstrapContext().getBitLoopGroup(),
         RpcType.HANDSHAKE,
         BitControlHandshake.class,
         BitControlHandshake.PARSER);
-    this.localIdentity = localEndpoint;
+    this.config = config;
     this.remoteEndpoint = remoteEndpoint;
-    this.handler = handler;
     this.closeHandlerFactory = closeHandlerFactory;
-    this.allocator = context.getAllocator();
-    if (context.getConfig().getBoolean(ExecConstants.BIT_AUTHENTICATION_ENABLED)) {
-      authProvider = context.getAuthProvider();
-      // TODO (move to ControllerImpl)
-      assert authProvider.getAllFactoryNames().size() != 0;
-      this.authMechanismToUse = context.getConfig()
-          .getString(ExecConstants.BIT_AUTHENTICATION_MECHANISM)
-          .toLowerCase();
-    } else {
-      authProvider = null;
-      authMechanismToUse = null;
-    }
   }
 
   @SuppressWarnings("unchecked")
   @Override
   public ControlConnection initRemoteConnection(SocketChannel channel) {
     super.initRemoteConnection(channel);
-    this.connection = new ControlConnection("control client", channel, this, allocator, authProvider,
-        authProvider == null ? handler : new FailingRequestHandler<ControlConnection>());
+    connection = new ControlConnection(channel, "control client", config,
+        config.getAuthProvider() == null
+            ? config.getMessageHandler()
+            : new FailingRequestHandler<ControlConnection>(),
+        this);
     return connection;
   }
 
@@ -118,24 +97,27 @@ public class ControlClient extends BasicClient<RpcType, ControlConnection, BitCo
   @Override
   protected void validateHandshake(BitControlHandshake handshake) throws RpcException {
     if (handshake.getRpcVersion() != ControlRpcConfig.RPC_VERSION) {
-      throw new RpcException(String.format("Invalid rpc version.  Expected %d, actual %d.", handshake.getRpcVersion(), ControlRpcConfig.RPC_VERSION));
+      throw new RpcException(String.format("Invalid rpc version.  Expected %d, actual %d.",
+          handshake.getRpcVersion(), ControlRpcConfig.RPC_VERSION));
     }
 
     if (handshake.getAuthenticationMechanismsCount() != 0) { // remote requires authentication
-      if (!handshake.getAuthenticationMechanismsList().contains(authMechanismToUse)) {
-        throw new RpcException(String.format("Drillbit running on %s does not support %s",
-            connection.getRemoteAddress(), authMechanismToUse));
+      if (config.getAuthProvider() == null) {
+        throw new RpcException(
+            String.format("Drillbit running on %s requires authentication, but authentication is not configured.",
+            remoteEndpoint.getAddress()));
       }
+      if (!handshake.getAuthenticationMechanismsList().contains(config.getAuthMechanismToUse())) {
+        throw new RpcException(String.format("Drillbit running on %s does not support %s",
+            remoteEndpoint.getAddress(), config.getAuthMechanismToUse()));
+      }
+
       final SaslClient saslClient;
       try {
-        final ConnectionParameters parameters = ConnectionParameters.createFromProperties(new Properties());
-        final UserGroupInformation loginUser = UserGroupInformation.getLoginUser();
-        final HadoopKerberosName serviceName = new HadoopKerberosName(loginUser.getUserName());
-
-        parameters.setParameter(ConnectionParameters.SERVICE_PRINCIPAL,
-            serviceName.getShortName() + "/" + remoteEndpoint.getAddress() + "@" + serviceName.getRealm());
-        saslClient = authProvider.getAuthenticatorFactory(authMechanismToUse)
-            .createSaslClient(UserGroupInformation.getLoginUser(), null);
+        saslClient = config.getAuthProvider()
+            .getAuthenticatorFactory(config.getAuthMechanismToUse())
+            .createSaslClient(UserGroupInformation.getLoginUser(),
+                config.getClientSaslProperties());
       } catch (final IOException e) {
         throw new RpcException("Unexpected failure trying to login.", e);
       }
@@ -154,18 +136,18 @@ public class ControlClient extends BasicClient<RpcType, ControlConnection, BitCo
   @Override
   protected <M extends MessageLite> RpcCommand<M, ControlConnection>
   getInitialCommand(final RpcCommand<M, ControlConnection> command) {
-    if (authProvider == null) {
+    if (config.getAuthProvider() == null) {
       return super.getInitialCommand(command);
     } else {
-      return new AuthenticationRpcCommand<>(command);
+      return new AuthenticationCommand<>(command);
     }
   }
 
-  protected class AuthenticationRpcCommand<M extends MessageLite> implements RpcCommand<M, ControlConnection> {
+  private class AuthenticationCommand<M extends MessageLite> implements RpcCommand<M, ControlConnection> {
 
     private final RpcCommand<M, ControlConnection> command;
 
-    public AuthenticationRpcCommand(RpcCommand<M, ControlConnection> command) {
+    public AuthenticationCommand(RpcCommand<M, ControlConnection> command) {
       this.command = command;
     }
 
@@ -187,7 +169,7 @@ public class ControlClient extends BasicClient<RpcType, ControlConnection, BitCo
 
               @Override
               public void success(Void value, ByteBuf buffer) {
-                connection.changeHandlerTo(handler);
+                connection.changeHandlerTo(config.getMessageHandler());
                 command.connectionSucceeded(connection);
               }
 
@@ -195,7 +177,7 @@ public class ControlClient extends BasicClient<RpcType, ControlConnection, BitCo
               public void interrupted(InterruptedException e) {
                 command.connectionFailed(FailureType.AUTHENTICATION, e);
               }
-            }).initiate(authMechanismToUse);
+            }).initiate(config.getAuthMechanismToUse());
       } catch (IOException e) {
         command.connectionFailed(FailureType.AUTHENTICATION, e);
       }
@@ -205,10 +187,6 @@ public class ControlClient extends BasicClient<RpcType, ControlConnection, BitCo
     public void connectionFailed(FailureType type, Throwable t) {
       command.connectionFailed(FailureType.AUTHENTICATION, t);
     }
-  }
-
-  public ControlConnection getConnection() {
-    return this.connection;
   }
 
   @Override

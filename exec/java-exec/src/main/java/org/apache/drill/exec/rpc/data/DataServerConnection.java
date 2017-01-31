@@ -18,34 +18,30 @@
 package org.apache.drill.exec.rpc.data;
 
 import io.netty.channel.socket.SocketChannel;
-import org.apache.drill.exec.memory.BufferAllocator;
 import org.apache.drill.exec.proto.BitData.RpcType;
 import org.apache.drill.exec.rpc.security.ServerAuthenticationHandler;
 import org.apache.drill.exec.rpc.AbstractServerConnection;
-import org.apache.drill.exec.rpc.security.AuthenticatorProvider;
 import org.apache.hadoop.security.HadoopKerberosName;
 import org.apache.hadoop.security.UserGroupInformation;
+import org.slf4j.Logger;
 
 import javax.security.sasl.SaslException;
 import java.io.IOException;
 
-// data connection on server-side (i.e. bit handling request)
+// data connection on server-side (i.e. bit handling request or receiving data)
 public class DataServerConnection extends AbstractServerConnection<DataServerConnection> {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DataServerConnection.class);
 
-  private final BufferAllocator allocator;
-
-  public DataServerConnection(SocketChannel channel, BufferAllocator allocator,
-                              AuthenticatorProvider authProvider, DataServerRequestHandler handler) {
-    super(channel, "data server", authProvider,
-        authProvider == null ? handler : new ServerAuthenticationHandler<>(handler, RpcType.SASL_MESSAGE_VALUE,
-            RpcType.SASL_MESSAGE));
-    this.allocator = allocator;
+  DataServerConnection(SocketChannel channel, ServerConnectionConfigImpl config) {
+    super(channel, config, config.getAuthProvider() == null
+        ? config.getMessageHandler()
+        : new ServerAuthenticationHandler<>(config.getMessageHandler(),
+        RpcType.SASL_MESSAGE_VALUE, RpcType.SASL_MESSAGE));
   }
 
   @Override
-  public BufferAllocator getAllocator() {
-    return allocator;
+  protected Logger getLogger() {
+    return logger;
   }
 
   @Override

@@ -47,9 +47,9 @@ import javax.security.sasl.SaslException;
 import java.io.IOException;
 
 public class DataClient extends BasicClient<RpcType, DataClientConnection, BitClientHandshake, BitServerHandshake>{
+  private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DataClient.class);
 
-  static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DataClient.class);
-
+  private final DrillbitEndpoint remoteEndpoint;
   private volatile DataClientConnection connection;
   private final BufferAllocator allocator;
   private final DataConnectionManager.CloseHandlerCreator closeHandlerFactory;
@@ -57,7 +57,8 @@ public class DataClient extends BasicClient<RpcType, DataClientConnection, BitCl
   private final AuthenticatorProvider authProvider;
 
 
-  public DataClient(DrillbitEndpoint remoteEndpoint, BootStrapContext context, DataConnectionManager.CloseHandlerCreator closeHandlerFactory) {
+  public DataClient(DrillbitEndpoint remoteEndpoint, BootStrapContext context,
+                    DataConnectionManager.CloseHandlerCreator closeHandlerFactory) {
     super(
         DataRpcConfig.getMapping(context.getConfig(), context.getExecutor()),
         context.getAllocator().getAsByteBufAllocator(),
@@ -65,14 +66,16 @@ public class DataClient extends BasicClient<RpcType, DataClientConnection, BitCl
         RpcType.HANDSHAKE,
         BitServerHandshake.class,
         BitServerHandshake.PARSER);
+    this.remoteEndpoint = remoteEndpoint;
     this.closeHandlerFactory = closeHandlerFactory;
     this.allocator = context.getAllocator();
-    this.authProvider = context.getAuthProvider();
     if (context.getConfig().getBoolean(ExecConstants.BIT_AUTHENTICATION_ENABLED)) {
+      this.authProvider = context.getAuthProvider();
       this.authMechanismToUse = context.getConfig()
           .getString(ExecConstants.BIT_AUTHENTICATION_MECHANISM)
           .toLowerCase();
     } else {
+      this.authProvider = null;
       this.authMechanismToUse = null;
     }
   }
@@ -112,14 +115,20 @@ public class DataClient extends BasicClient<RpcType, DataClientConnection, BitCl
     }
 
     if (handshake.getAuthenticationMechanismsCount() != 0) { // remote requires authentication
+      if (authProvider == null) {
+        throw new RpcException(
+            String.format("Drillbit running on %s requires authentication, but authentication is not configured.",
+                remoteEndpoint.getAddress()));
+      }
+
       if (!handshake.getAuthenticationMechanismsList().contains(authMechanismToUse)) {
         throw new RpcException(String.format("Drillbit running on %s does not support %s",
-            connection.getRemoteAddress(), authMechanismToUse));
+            remoteEndpoint.getAddress(), authMechanismToUse));
       }
       final SaslClient saslClient;
       try {
         saslClient = authProvider.getAuthenticatorFactory(authMechanismToUse)
-            .createSaslClient(UserGroupInformation.getLoginUser(), null /** properties; default QOP is auth */);
+            .createSaslClient(UserGroupInformation.getLoginUser(), null /** properties; default QOP is auth */); // TODO FIX
       } catch (final IOException e) {
         throw new RpcException("Unexpected failure trying to login.", e);
       }
@@ -140,15 +149,15 @@ public class DataClient extends BasicClient<RpcType, DataClientConnection, BitCl
     if (authProvider == null) {
       return super.getInitialCommand(command);
     } else {
-      return new AuthenticationRpcCommand<>(command);
+      return new AuthenticationCommand<>(command);
     }
   }
 
-  protected class AuthenticationRpcCommand<M extends MessageLite> implements RpcCommand<M, DataClientConnection> {
+  private class AuthenticationCommand<M extends MessageLite> implements RpcCommand<M, DataClientConnection> {
 
     private final RpcCommand<M, DataClientConnection> command;
 
-    public AuthenticationRpcCommand(RpcCommand<M, DataClientConnection> command) {
+    public AuthenticationCommand(RpcCommand<M, DataClientConnection> command) {
       this.command = command;
     }
 
@@ -187,10 +196,6 @@ public class DataClient extends BasicClient<RpcType, DataClientConnection, BitCl
     public void connectionFailed(FailureType type, Throwable t) {
       command.connectionFailed(FailureType.AUTHENTICATION, t);
     }
-  }
-
-  public DataClientConnection getConnection() {
-    return this.connection;
   }
 
   @Override

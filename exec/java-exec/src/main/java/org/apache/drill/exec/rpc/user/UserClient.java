@@ -30,13 +30,14 @@ import io.netty.buffer.DrillBuf;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 
 import io.netty.channel.socket.SocketChannel;
 import org.apache.drill.common.KerberosUtil;
-import org.apache.drill.common.config.ConnectionParameters;
+import org.apache.drill.common.config.DrillProperties;
 import org.apache.drill.common.config.DrillConfig;
 import org.apache.drill.exec.memory.BufferAllocator;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
@@ -99,11 +100,10 @@ public class UserClient extends BasicClient<RpcType, UserClient.UserToBitConnect
   private RpcEndpointInfos serverInfos = null;
 
   private boolean supportComplexTypes = true;
-  private ConnectionParameters parameters;
+  private DrillProperties properties;
 
   // these are used for authentication
   private volatile List<String> supportedAuthMechs = null;
-  private SaslClient saslClient = null;
   private volatile boolean authComplete = true;
 
   public UserClient(String clientName, DrillConfig config, boolean supportComplexTypes,
@@ -128,7 +128,7 @@ public class UserClient extends BasicClient<RpcType, UserClient.UserToBitConnect
     send(queryResultHandler.getWrappedListener(resultsListener), RpcType.RUN_QUERY, query, QueryId.class);
   }
 
-  public CheckedFuture<Void, RpcException> connect(DrillbitEndpoint endpoint, ConnectionParameters parameters,
+  public CheckedFuture<Void, RpcException> connect(DrillbitEndpoint endpoint, DrillProperties parameters,
                                                    UserCredentials credentials) {
     final FutureHandler handler = new FutureHandler();
     UserToBitHandshake.Builder hsBuilder = UserToBitHandshake.newBuilder()
@@ -140,7 +140,7 @@ public class UserClient extends BasicClient<RpcType, UserClient.UserToBitConnect
         .setClientInfos(UserRpcUtils.getRpcEndpointInfos(clientName))
         .setSupportSasl(true)
         .setProperties(parameters.serializeForServer());
-    this.parameters = parameters;
+    this.properties = parameters;
 
     connectAsClient(queryResultHandler.getWrappedConnectionHandler(handler),
         hsBuilder.build(), endpoint.getAddress(), endpoint.getUserPort());
@@ -172,17 +172,18 @@ public class UserClient extends BasicClient<RpcType, UserClient.UserToBitConnect
    * in null if authentication succeeds, or throws a {@link SaslException} with relevant message if
    * authentication fails.
    *
-   * This method uses parameters provided at {@link #connect connection time} and override them with the
-   * given parameters, if any.
+   * This method uses properties provided at {@link #connect connection time} and override them with the
+   * given properties, if any.
    *
    * @param overrides parameter overrides
    * @return result of authentication request
    */
-  public CheckedFuture<Void, SaslException> authenticate(final ConnectionParameters overrides) {
+  public CheckedFuture<Void, SaslException> authenticate(final DrillProperties overrides) {
     if (supportedAuthMechs == null) {
       throw new IllegalStateException("Server does not require authentication.");
     }
-    parameters.merge(overrides);
+    properties.merge(overrides);
+    final Map<String, String> propertiesMap = properties.stringPropertiesAsMap();
 
     final SettableFuture<Void> settableFuture = SettableFuture.create(); // future used in SASL exchange
     final CheckedFuture<Void, SaslException> future =
@@ -205,7 +206,7 @@ public class UserClient extends BasicClient<RpcType, UserClient.UserToBitConnect
 
     final AuthenticatorFactory factory;
     try {
-      factory = getAuthenticatorFactory(parameters);
+      factory = getAuthenticatorFactory();
     } catch (final SaslException e) {
       settableFuture.setException(e);
       return future;
@@ -215,15 +216,16 @@ public class UserClient extends BasicClient<RpcType, UserClient.UserToBitConnect
     logger.trace("Will try to login for {} mechanism.", mechanismName);
     final UserGroupInformation ugi;
     try {
-      ugi = factory.createAndLoginUser(parameters);
+      ugi = factory.createAndLoginUser(propertiesMap);
     } catch (final IOException e) {
       settableFuture.setException(e);
       return future;
     }
 
     logger.trace("Will try to authenticate to server using {} mechanism.", mechanismName);
+    final SaslClient saslClient;
     try {
-      saslClient = factory.createSaslClient(ugi, parameters);
+      saslClient = factory.createSaslClient(ugi, propertiesMap);
       connection.setSaslClient(saslClient);
     } catch (final SaslException e) {
       settableFuture.setException(e);
@@ -258,8 +260,7 @@ public class UserClient extends BasicClient<RpcType, UserClient.UserToBitConnect
     return future;
   }
 
-  private AuthenticatorFactory getAuthenticatorFactory(final ConnectionParameters parameters)
-      throws SaslException {
+  private AuthenticatorFactory getAuthenticatorFactory() throws SaslException {
     // canonicalization
     final Set<String> supportedAuthMechanismSet = ImmutableSet.copyOf(
         Iterators.transform(supportedAuthMechs.iterator(), new Function<String, String>() {
@@ -271,12 +272,12 @@ public class UserClient extends BasicClient<RpcType, UserClient.UserToBitConnect
         }));
 
     // first, check if a certain mechanism must be used
-    String authMechanism = parameters.getParameter(ConnectionParameters.AUTH_MECHANISM);
+    String authMechanism = properties.getProperty(DrillProperties.AUTH_MECHANISM);
     if (authMechanism != null) {
       if (!authProvider.containsFactory(authMechanism)) {
         throw new SaslException(String.format("Unknown mechanism: %s", authMechanism));
       }
-      if (!supportedAuthMechanismSet.contains(authMechanism)) {
+      if (!supportedAuthMechanismSet.contains(authMechanism.toUpperCase())) {
         throw new SaslException(String.format("Server does not support authentication using: %s",
             authMechanism));
       }
@@ -285,14 +286,14 @@ public class UserClient extends BasicClient<RpcType, UserClient.UserToBitConnect
 
     // check if Kerberos is supported, and the service principal is provided
     if (supportedAuthMechanismSet.contains(KerberosUtil.KERBEROS_SIMPLE_NAME) &&
-        parameters.getParameter(ConnectionParameters.SERVICE_PRINCIPAL) != null) {
+        properties.getProperty(DrillProperties.SERVICE_PRINCIPAL) != null) {
       return authProvider.getAuthenticatorFactory(KerberosUtil.KERBEROS_SIMPLE_NAME);
     }
 
     // check if username/password is supported, and username/password are provided
     if (supportedAuthMechanismSet.contains(PlainFactory.SIMPLE_NAME) &&
-        parameters.getParameter(ConnectionParameters.USER) != null &&
-        !Strings.isNullOrEmpty(parameters.getParameter(ConnectionParameters.PASSWORD))) {
+        properties.getProperty(DrillProperties.USER) != null &&
+        !Strings.isNullOrEmpty(properties.getProperty(DrillProperties.PASSWORD))) {
       return authProvider.getAuthenticatorFactory(PlainFactory.SIMPLE_NAME);
     }
 
@@ -304,17 +305,6 @@ public class UserClient extends BasicClient<RpcType, UserClient.UserToBitConnect
   void send(RpcOutcomeListener<RECEIVE> listener, RpcType rpcType, SEND protobufBody, Class<RECEIVE> clazz,
             boolean allowInEventLoop, ByteBuf... dataBodies) {
     super.send(listener, connection, rpcType, protobufBody, clazz, allowInEventLoop, dataBodies);
-  }
-
-  protected SaslClient getSaslClient() {
-    return saslClient;
-  }
-
-  protected void disposeSaslClient() throws SaslException {
-    if (saslClient != null) {
-      saslClient.dispose();
-      saslClient = null;
-    }
   }
 
   @Override
@@ -404,21 +394,18 @@ public class UserClient extends BasicClient<RpcType, UserClient.UserToBitConnect
   @Override
   public UserToBitConnection initRemoteConnection(SocketChannel channel) {
     super.initRemoteConnection(channel);
-    return new UserToBitConnection("user client", channel, allocator);
+    return new UserToBitConnection(channel);
   }
 
-  public static class UserToBitConnection extends AbstractClientConnection {
+  public class UserToBitConnection extends AbstractClientConnection {
 
-    private final BufferAllocator alloc;
-
-    public UserToBitConnection(String name, SocketChannel channel, BufferAllocator alloc) {
-      super(channel, name);
-      this.alloc = alloc;
+    UserToBitConnection(SocketChannel channel) {
+      super(channel, "user client");
     }
 
     @Override
     public BufferAllocator getAllocator() {
-      return alloc;
+      return allocator;
     }
   }
 
@@ -435,16 +422,6 @@ public class UserClient extends BasicClient<RpcType, UserClient.UserToBitConnect
   public DrillRpcFuture<QueryPlanFragments> planQuery(
       GetQueryPlanFragments req) {
     return send(RpcType.GET_QUERY_PLAN_FRAGMENTS, req, QueryPlanFragments.class);
-  }
-
-  @Override
-  public void close() {
-    try {
-      disposeSaslClient();
-    } catch (final SaslException ignored) {
-      // ignored
-    }
-    super.close();
   }
 
   private class FutureHandler extends AbstractCheckedFuture<Void, RpcException>

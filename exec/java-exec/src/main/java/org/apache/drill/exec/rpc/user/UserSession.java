@@ -34,7 +34,7 @@ import org.apache.calcite.schema.SchemaPlus;
 import org.apache.calcite.schema.Table;
 import org.apache.calcite.tools.ValidationException;
 import org.apache.drill.common.config.DrillConfig;
-import org.apache.drill.common.config.ConnectionParameters;
+import org.apache.drill.common.config.DrillProperties;
 import org.apache.drill.exec.planner.sql.SchemaUtilites;
 import org.apache.drill.exec.planner.sql.handlers.SqlHandlerUtil;
 import org.apache.drill.exec.proto.UserBitShared.UserCredentials;
@@ -60,7 +60,7 @@ public class UserSession implements AutoCloseable {
 
   private boolean supportComplexTypes = false;
   private UserCredentials credentials;
-  private ConnectionParameters params;
+  private DrillProperties properties;
   private OptionManager sessionOptions;
   private final AtomicInteger queryCount;
   private final String sessionId;
@@ -116,7 +116,7 @@ public class UserSession implements AutoCloseable {
     }
 
     public Builder withUserProperties(UserProperties properties) {
-      userSession.params = ConnectionParameters.createFromProperties(properties);
+      userSession.properties = DrillProperties.createFromProperties(properties);
       return this;
     }
 
@@ -170,7 +170,7 @@ public class UserSession implements AutoCloseable {
   }
 
   public String getTargetUserName() {
-    return params.getParameter(ConnectionParameters.IMPERSONATION_TARGET);
+    return properties.getProperty(DrillProperties.IMPERSONATION_TARGET);
   }
 
   public void incrementQueryCount(final QueryCountIncrementer incrementer) {
@@ -207,14 +207,14 @@ public class UserSession implements AutoCloseable {
       SchemaUtilites.throwSchemaNotFoundException(currentDefaultSchema, newDefaultSchemaPath);
     }
 
-    params.setParameter(ConnectionParameters.SCHEMA, SchemaUtilites.getSchemaPath(newDefault));
+    properties.setProperty(DrillProperties.SCHEMA, SchemaUtilites.getSchemaPath(newDefault));
   }
 
   /**
    * @return Get current default schema path.
    */
   public String getDefaultSchemaPath() {
-    return params.getParameter(ConnectionParameters.SCHEMA, "");
+    return properties.getProperty(DrillProperties.SCHEMA, "");
   }
 
   /**

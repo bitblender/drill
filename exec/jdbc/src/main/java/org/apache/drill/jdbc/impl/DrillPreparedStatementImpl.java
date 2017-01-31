@@ -510,7 +510,7 @@ abstract class DrillPreparedStatementImpl extends AvaticaPreparedStatement
     }
   }
 
-  // Covered by superclass methods' calls to getParameter(int):
+  // Covered by superclass methods' calls to getProperty(int):
   // - setNull(int, int)
   // - setBoolean(int, boolean)
   // - setByte(int, byte)
@@ -540,7 +540,7 @@ abstract class DrillPreparedStatementImpl extends AvaticaPreparedStatement
     }
   }
 
-  // Covered by superclass methods' calls to getParameter(int):
+  // Covered by superclass methods' calls to getProperty(int):
   // - setObject(int, Object, int)
   // - setObject(int, Object)
 
@@ -566,7 +566,7 @@ abstract class DrillPreparedStatementImpl extends AvaticaPreparedStatement
     }
   }
 
-  // Covered by superclass methods' calls to getParameter(int):
+  // Covered by superclass methods' calls to getProperty(int):
   // - setCharacterStream(int, Reader, int)
   // - setRef(int, Ref)
   // - setBlob(int, Blob)
@@ -585,7 +585,7 @@ abstract class DrillPreparedStatementImpl extends AvaticaPreparedStatement
     return super.getMetaData();
   }
 
-  // Covered by superclass methods' calls to getParameter(int):
+  // Covered by superclass methods' calls to getProperty(int):
   // - setDate(int, Date, Calendar)
   // - setTime(int, Time, Calendar)
   // - setTimestamp(int, Timestamp, Calendar)
@@ -600,7 +600,7 @@ abstract class DrillPreparedStatementImpl extends AvaticaPreparedStatement
 
   // The following methods are abstract in AvaticaPreparedStatement, and so
   // cannot be overridden here to add throwIfClosed calls.  They are addressed
-  // via DrillJdbc41Factory (which calls back to getParameter(int) in here,
+  // via DrillJdbc41Factory (which calls back to getProperty(int) in here,
   // which calls throwIfClosed()).
   // - setRowId(int, RowId)
   // - setNString(int, String)

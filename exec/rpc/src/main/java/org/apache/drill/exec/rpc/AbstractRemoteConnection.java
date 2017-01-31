@@ -28,7 +28,7 @@ import java.util.concurrent.ExecutionException;
 import org.apache.drill.exec.proto.UserBitShared.DrillPBError;
 
 public abstract class AbstractRemoteConnection implements RemoteConnection {
-  static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(AbstractRemoteConnection.class);
+  private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(AbstractRemoteConnection.class);
   private final Channel channel;
   private final WriteManager writeManager;
   private final RequestIdMap requestIdMap = new RequestIdMap();

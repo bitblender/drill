@@ -17,13 +17,9 @@
  */
 package org.apache.drill.exec.rpc.control;
 
+import com.google.protobuf.MessageLite;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.socket.SocketChannel;
-
-import java.io.IOException;
-import java.util.UUID;
-
-import org.apache.drill.exec.memory.BufferAllocator;
 import org.apache.drill.exec.proto.BitControl.RpcType;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 import org.apache.drill.exec.rpc.AbstractServerConnection;
@@ -31,31 +27,29 @@ import org.apache.drill.exec.rpc.ClientConnection;
 import org.apache.drill.exec.rpc.RequestHandler;
 import org.apache.drill.exec.rpc.RpcBus;
 import org.apache.drill.exec.rpc.RpcOutcomeListener;
-
-import com.google.protobuf.MessageLite;
-import org.apache.drill.exec.rpc.security.AuthenticatorProvider;
+import org.slf4j.Logger;
 
 import javax.security.sasl.SaslClient;
 import javax.security.sasl.SaslException;
+import java.io.IOException;
+import java.util.UUID;
 
 public class ControlConnection extends AbstractServerConnection<ControlConnection> implements ClientConnection {
-  private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ControlConnection.class);
+  private static final Logger logger = org.slf4j.LoggerFactory.getLogger(ControlConnection.class);
 
   private final RpcBus<RpcType, ControlConnection> bus;
-  private final BufferAllocator allocator;
+  private final UUID id;
+
   private volatile DrillbitEndpoint endpoint;
   private volatile boolean active = false;
-  private final UUID id;
 
   private SaslClient saslClient;
 
-  public ControlConnection(String name, SocketChannel channel, RpcBus<RpcType, ControlConnection> bus,
-                           BufferAllocator allocator, AuthenticatorProvider authProvider,
-                           RequestHandler<ControlConnection> handler) {
-    super(channel, name, authProvider, handler);
+  ControlConnection(SocketChannel channel, String name, ServerConnectionConfigImpl config,
+                    RequestHandler<ControlConnection> handler, RpcBus<RpcType, ControlConnection> bus) {
+    super(channel, name, config, handler);
     this.bus = bus;
     this.id = UUID.randomUUID();
-    this.allocator = allocator;
   }
 
   void setEndpoint(DrillbitEndpoint endpoint) {
@@ -64,13 +58,15 @@ public class ControlConnection extends AbstractServerConnection<ControlConnectio
     active = true;
   }
 
-  public <SEND extends MessageLite, RECEIVE extends MessageLite> void send(RpcOutcomeListener<RECEIVE> outcomeListener,
-      RpcType rpcType, SEND protobufBody, Class<RECEIVE> clazz, ByteBuf... dataBodies) {
+  public <SEND extends MessageLite, RECEIVE extends MessageLite>
+  void send(RpcOutcomeListener<RECEIVE> outcomeListener, RpcType rpcType, SEND protobufBody, Class<RECEIVE> clazz,
+            ByteBuf... dataBodies) {
     bus.send(outcomeListener, this, rpcType, protobufBody, clazz, dataBodies);
   }
 
-  public <SEND extends MessageLite, RECEIVE extends MessageLite> void sendUnsafe(RpcOutcomeListener<RECEIVE> outcomeListener,
-      RpcType rpcType, SEND protobufBody, Class<RECEIVE> clazz, ByteBuf... dataBodies) {
+  public <SEND extends MessageLite, RECEIVE extends MessageLite>
+  void sendUnsafe(RpcOutcomeListener<RECEIVE> outcomeListener, RpcType rpcType, SEND protobufBody,
+                  Class<RECEIVE> clazz, ByteBuf... dataBodies) {
     bus.send(outcomeListener, this, rpcType, protobufBody, clazz, true, dataBodies);
   }
 
@@ -110,8 +106,8 @@ public class ControlConnection extends AbstractServerConnection<ControlConnectio
   }
 
   @Override
-  public BufferAllocator getAllocator() {
-    return allocator;
+  protected Logger getLogger() {
+    return logger;
   }
 
   @Override

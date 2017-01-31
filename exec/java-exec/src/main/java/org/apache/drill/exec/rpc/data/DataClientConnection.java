@@ -29,7 +29,7 @@ import org.apache.drill.exec.rpc.RpcOutcomeListener;
 
 import com.google.protobuf.MessageLite;
 
-// data connection on client-side (i.e. bit making request)
+// data connection on client-side (i.e. bit making request or sending data)
 public class DataClientConnection extends AbstractClientConnection {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DataClientConnection.class);
 
@@ -39,7 +39,6 @@ public class DataClientConnection extends AbstractClientConnection {
   public DataClientConnection(SocketChannel channel, DataClient client) {
     super(channel, "data client");
     this.client = client;
-    // we use a local listener pool unless a global one is provided.
     this.id = UUID.randomUUID();
   }
 
@@ -48,10 +47,10 @@ public class DataClientConnection extends AbstractClientConnection {
     return client.getAllocator();
   }
 
-  public <SEND extends MessageLite, RECEIVE extends MessageLite> void send(RpcOutcomeListener<RECEIVE> outcomeListener, RpcType rpcType,
-      SEND protobufBody, Class<RECEIVE> clazz, ByteBuf... dataBodies) {
+  public <SEND extends MessageLite, RECEIVE extends MessageLite>
+  void send(RpcOutcomeListener<RECEIVE> outcomeListener, RpcType rpcType, SEND protobufBody, Class<RECEIVE> clazz,
+            ByteBuf... dataBodies) {
     client.send(outcomeListener, this, rpcType, protobufBody, clazz, dataBodies);
-
   }
 
   @Override

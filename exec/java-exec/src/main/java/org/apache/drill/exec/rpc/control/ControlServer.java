@@ -22,7 +22,6 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.util.concurrent.GenericFutureListener;
 
-import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.memory.BufferAllocator;
 import org.apache.drill.exec.proto.BitControl.BitControlHandshake;
 import org.apache.drill.exec.proto.BitControl.RpcType;
@@ -32,34 +31,23 @@ import org.apache.drill.exec.rpc.ProtobufLengthDecoder;
 import org.apache.drill.exec.rpc.ResponseSender;
 import org.apache.drill.exec.rpc.RpcException;
 import org.apache.drill.exec.rpc.security.ServerAuthenticationHandler;
-import org.apache.drill.exec.rpc.security.AuthenticatorProvider;
-import org.apache.drill.exec.server.BootStrapContext;
-import org.apache.drill.exec.work.batch.ControlMessageHandler;
 
 import com.google.protobuf.MessageLite;
 
 public class ControlServer extends BasicServer<RpcType, ControlConnection>{
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ControlServer.class);
 
-  private final ControlMessageHandler handler;
+  private final ServerConnectionConfigImpl config;
   private final ConnectionManagerRegistry connectionRegistry;
   private volatile ProxyCloseHandler proxyCloseHandler;
-  private BufferAllocator allocator;
-  private final AuthenticatorProvider authProvider; // null iff user auth is disabled
 
-  public ControlServer(ControlMessageHandler handler, BootStrapContext context, ConnectionManagerRegistry connectionRegistry) {
-    super(
-        ControlRpcConfig.getMapping(context.getConfig(), context.getExecutor()),
-        context.getAllocator().getAsByteBufAllocator(),
-        context.getBitLoopGroup());
-    this.handler = handler;
+  public ControlServer(ServerConnectionConfigImpl config, ConnectionManagerRegistry connectionRegistry) {
+    super(ControlRpcConfig.getMapping(config.getBootstrapContext().getConfig(),
+        config.getBootstrapContext().getExecutor()),
+        config.getAllocator().getAsByteBufAllocator(),
+        config.getBootstrapContext().getBitLoopGroup());
+    this.config = config;
     this.connectionRegistry = connectionRegistry;
-    this.allocator = context.getAllocator();
-    if (context.getConfig().getBoolean(ExecConstants.BIT_AUTHENTICATION_ENABLED)) {
-      authProvider = context.getAuthProvider();
-    } else {
-      authProvider = null;
-    }
   }
 
   @Override
@@ -82,9 +70,12 @@ public class ControlServer extends BasicServer<RpcType, ControlConnection>{
   @Override
   public ControlConnection initRemoteConnection(SocketChannel channel) {
     super.initRemoteConnection(channel);
-    return new ControlConnection("control server", channel, this, allocator, authProvider,
-        authProvider == null ? handler : new ServerAuthenticationHandler<>(handler, RpcType.SASL_MESSAGE_VALUE,
-            RpcType.SASL_MESSAGE));
+    return new ControlConnection(channel, "control server", config,
+        config.getAuthProvider() == null
+            ? config.getMessageHandler()
+            : new ServerAuthenticationHandler<>(config.getMessageHandler(),
+            RpcType.SASL_MESSAGE_VALUE, RpcType.SASL_MESSAGE),
+        this);
   }
 
 
@@ -96,10 +87,14 @@ public class ControlServer extends BasicServer<RpcType, ControlConnection>{
       public MessageLite getHandshakeResponse(BitControlHandshake inbound) throws Exception {
 //        logger.debug("Handling handshake from other bit. {}", inbound);
         if (inbound.getRpcVersion() != ControlRpcConfig.RPC_VERSION) {
-          throw new RpcException(String.format("Invalid rpc version.  Expected %d, actual %d.", inbound.getRpcVersion(), ControlRpcConfig.RPC_VERSION));
+          throw new RpcException(String.format("Invalid rpc version.  Expected %d, actual %d.",
+              inbound.getRpcVersion(), ControlRpcConfig.RPC_VERSION));
         }
-        if (!inbound.hasEndpoint() || inbound.getEndpoint().getAddress().isEmpty() || inbound.getEndpoint().getControlPort() < 1) {
-          throw new RpcException(String.format("RPC didn't provide valid counter endpoint information.  Received %s.", inbound.getEndpoint()));
+        if (!inbound.hasEndpoint() ||
+            inbound.getEndpoint().getAddress().isEmpty() ||
+            inbound.getEndpoint().getControlPort() < 1) {
+          throw new RpcException(String.format("RPC didn't provide valid counter endpoint information.  Received %s.",
+                  inbound.getEndpoint()));
         }
         connection.setEndpoint(inbound.getEndpoint());
 
@@ -107,15 +102,16 @@ public class ControlServer extends BasicServer<RpcType, ControlConnection>{
         ControlConnectionManager manager = connectionRegistry.getConnectionManager(inbound.getEndpoint());
 
         // update the close handler.
-        proxyCloseHandler.setHandler(manager.getCloseHandlerCreator().getHandler(connection, proxyCloseHandler.getHandler()));
+        proxyCloseHandler.setHandler(manager.getCloseHandlerCreator().getHandler(connection,
+            proxyCloseHandler.getHandler()));
 
         // add to the connection manager.
         manager.addExternalConnection(connection);
 
         final BitControlHandshake.Builder builder = BitControlHandshake.newBuilder();
         builder.setRpcVersion(ControlRpcConfig.RPC_VERSION);
-        if (authProvider != null) {
-          builder.addAllAuthenticationMechanisms(authProvider.getAllFactoryNames());
+        if (config.getAuthProvider() != null) {
+          builder.addAllAuthenticationMechanisms(config.getAuthProvider().getAllFactoryNames());
         }
         return builder.build();
       }

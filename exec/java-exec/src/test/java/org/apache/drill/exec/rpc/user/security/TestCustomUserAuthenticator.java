@@ -20,7 +20,7 @@ package org.apache.drill.exec.rpc.user.security;
 import com.google.common.collect.Lists;
 import com.typesafe.config.ConfigValueFactory;
 import org.apache.drill.BaseTestQuery;
-import org.apache.drill.common.config.ConnectionParameters;
+import org.apache.drill.common.config.DrillProperties;
 import org.apache.drill.common.config.DrillConfig;
 import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.rpc.RpcException;
@@ -57,8 +57,8 @@ public class TestCustomUserAuthenticator extends BaseTestQuery {
         false);
 
     final Properties connectionProps = new Properties();
-    connectionProps.setProperty(ConnectionParameters.USER, "anonymous");
-    connectionProps.setProperty(ConnectionParameters.PASSWORD, "anything works!");
+    connectionProps.setProperty(DrillProperties.USER, "anonymous");
+    connectionProps.setProperty(DrillProperties.PASSWORD, "anything works!");
     updateTestCluster(3, newConfig, connectionProps);
   }
 
@@ -111,8 +111,8 @@ public class TestCustomUserAuthenticator extends BaseTestQuery {
   private static void runTest(final String user, final String password) throws Exception {
     final Properties connectionProps = new Properties();
 
-    connectionProps.setProperty(ConnectionParameters.USER, user);
-    connectionProps.setProperty(ConnectionParameters.PASSWORD, password);
+    connectionProps.setProperty(DrillProperties.USER, user);
+    connectionProps.setProperty(DrillProperties.PASSWORD, password);
 
     updateClient(connectionProps);
 

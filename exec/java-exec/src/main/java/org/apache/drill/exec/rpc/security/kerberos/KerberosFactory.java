@@ -18,7 +18,7 @@
 package org.apache.drill.exec.rpc.security.kerberos;
 
 import org.apache.drill.common.KerberosUtil;
-import org.apache.drill.common.config.ConnectionParameters;
+import org.apache.drill.common.config.DrillProperties;
 import org.apache.drill.exec.rpc.security.AuthenticatorFactory;
 import org.apache.drill.exec.rpc.security.FastSaslClientFactory;
 import org.apache.drill.exec.rpc.security.FastSaslServerFactory;
@@ -45,9 +45,9 @@ import java.util.Map;
 public class KerberosFactory implements AuthenticatorFactory {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(KerberosFactory.class);
 
-  private static final String DEFAULT_SERVICE_NAME = System.getProperty("service.name.primary", "drill");
+  private static final String DRILL_SERVICE_NAME = System.getProperty("drill.principal.primary", "drill");
 
-  private static final String DEFAULT_REALM_NAME = System.getProperty("service.name.realm", "default");
+  private static final String DRILL_REALM_NAME = System.getProperty("drill.principal.realm", "default");
 
   @Override
   public String getSimpleName() {
@@ -62,9 +62,9 @@ public class KerberosFactory implements AuthenticatorFactory {
     conf.set("hadoop.login", "kerberos"); // TODO (MAPR specific)
     UserGroupInformation.setConfiguration(conf);
 
-    final String keytab = (String) properties.get(ConnectionParameters.KEYTAB);
-    final boolean assumeSubject = properties.containsKey(ConnectionParameters.KERBEROS_FROM_SUBJECT) &&
-        Boolean.parseBoolean((String) properties.get(ConnectionParameters.KERBEROS_FROM_SUBJECT));
+    final String keytab = (String) properties.get(DrillProperties.KEYTAB);
+    final boolean assumeSubject = properties.containsKey(DrillProperties.KERBEROS_FROM_SUBJECT) &&
+        Boolean.parseBoolean((String) properties.get(DrillProperties.KERBEROS_FROM_SUBJECT));
     try {
       final UserGroupInformation ugi;
       if (assumeSubject) {
@@ -73,7 +73,7 @@ public class KerberosFactory implements AuthenticatorFactory {
       } else {
         if (keytab != null) {
           ugi = UserGroupInformation.loginUserFromKeytabAndReturnUGI(
-              (String) properties.get(ConnectionParameters.USER), keytab);
+              (String) properties.get(DrillProperties.USER), keytab);
           logger.debug("Logged in {} using keytab.", ugi.getShortUserName());
         } else {
           // includes Kerberos ticket login
@@ -188,22 +188,22 @@ public class KerberosFactory implements AuthenticatorFactory {
   }
 
   private static String getServicePrincipal(final Map<String, ?> properties) throws SaslException {
-    final String principal = (String) properties.get(ConnectionParameters.SERVICE_PRINCIPAL);
+    final String principal = (String) properties.get(DrillProperties.SERVICE_PRINCIPAL);
     if (principal != null) {
       return principal;
     }
 
-    final String serviceHostname = (String) properties.get(ConnectionParameters.SERVICE_HOST);
+    final String serviceHostname = (String) properties.get(DrillProperties.SERVICE_HOST);
     if (serviceHostname == null) {
       throw new SaslException("Unknown Drillbit hostname. Check connection parameters?");
     }
 
-    final String serviceName = (String) properties.get(ConnectionParameters.SERVICE_NAME);
-    final String realm = (String) properties.get(ConnectionParameters.REALM);
+    final String serviceName = (String) properties.get(DrillProperties.SERVICE_NAME);
+    final String realm = (String) properties.get(DrillProperties.REALM);
     return KerberosUtil.getPrincipalFromParts(
-        serviceName == null ? DEFAULT_SERVICE_NAME : serviceName,
+        serviceName == null ? DRILL_SERVICE_NAME : serviceName,
         serviceHostname.toLowerCase(), // see HADOOP-7988
-        realm == null ? DEFAULT_REALM_NAME : realm
+        realm == null ? DRILL_REALM_NAME : realm
     );
   }
 }

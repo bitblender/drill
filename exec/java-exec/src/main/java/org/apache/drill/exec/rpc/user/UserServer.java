@@ -23,9 +23,7 @@ import java.util.UUID;
 
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
-import org.apache.drill.common.config.ConnectionParameters;
-import org.apache.drill.common.config.DrillConfig;
-import org.apache.drill.exec.ExecConstants;
+import org.apache.drill.common.config.DrillProperties;
 import org.apache.drill.exec.exception.DrillbitStartupException;
 import org.apache.drill.exec.memory.BufferAllocator;
 import org.apache.drill.exec.physical.impl.materialize.QueryWritableBatch;
@@ -50,10 +48,10 @@ import org.apache.drill.exec.rpc.RpcOutcomeListener;
 import org.apache.drill.exec.rpc.AbstractServerConnection;
 import org.apache.drill.exec.rpc.security.ServerAuthenticationHandler;
 import org.apache.drill.exec.rpc.user.UserServer.BitToUserConnection;
-import org.apache.drill.exec.rpc.security.AuthenticatorProvider;
 import org.apache.drill.exec.rpc.security.plain.PlainFactory;
 import org.apache.drill.exec.rpc.user.security.UserAuthenticationException;
 import org.apache.drill.exec.server.BootStrapContext;
+import org.apache.drill.exec.server.options.OptionManager;
 import org.apache.drill.exec.work.user.UserWorker;
 
 import com.google.protobuf.MessageLite;
@@ -64,37 +62,22 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import org.apache.hadoop.security.HadoopKerberosName;
+import org.slf4j.Logger;
 
 public class UserServer extends BasicServer<RpcType, BitToUserConnection> {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(UserServer.class);
   private static final String SERVER_NAME = "Apache Drill Server";
 
-  final UserWorker worker;
-  final BufferAllocator alloc;
-  final AuthenticatorProvider authProvider; // null iff user auth is disabled
-  final InboundImpersonationManager impersonationManager;
-  final UserServerRequestHandler handler;
+  private final ServerConnectionConfigImpl config;
+  private final UserWorker userWorker;
 
-  public UserServer(BootStrapContext context, BufferAllocator alloc, EventLoopGroup eventLoopGroup,
+  public UserServer(BootStrapContext context, BufferAllocator allocator, EventLoopGroup eventLoopGroup,
                     UserWorker worker) throws DrillbitStartupException {
     super(UserRpcConfig.getMapping(context.getConfig(), context.getExecutor()),
-        alloc.getAsByteBufAllocator(),
+        allocator.getAsByteBufAllocator(),
         eventLoopGroup);
-    this.worker = worker;
-    this.alloc = alloc;
-    final DrillConfig config = context.getConfig();
-    if (config.getBoolean(ExecConstants.USER_AUTHENTICATION_ENABLED)) {
-      authProvider = context.getAuthProvider();
-      if (authProvider.getAllFactoryNames().size() == 0) {
-        throw new DrillbitStartupException("Authentication enabled, but no mechanisms found. Please check " +
-            "authentication configuration.");
-      }
-    } else {
-      authProvider = null;
-    }
-    impersonationManager = !config.getBoolean(ExecConstants.IMPERSONATION_ENABLED) ? null :
-        new InboundImpersonationManager();
-    handler = new UserServerRequestHandler(worker);
+    this.config = new ServerConnectionConfigImpl(allocator, context, new UserServerRequestHandler(worker));
+    this.userWorker = worker;
   }
 
   @Override
@@ -165,9 +148,10 @@ public class UserServer extends BasicServer<RpcType, BitToUserConnection> {
     private UserToBitHandshake inbound;
 
     public BitToUserConnection(SocketChannel channel) {
-      super(channel, "user client", authProvider,
-          authProvider == null ? handler : new ServerAuthenticationHandler<>(handler, RpcType.SASL_MESSAGE_VALUE,
-              RpcType.SASL_MESSAGE));
+      super(channel, config, config.getAuthProvider() == null
+          ? config.getMessageHandler()
+          : new ServerAuthenticationHandler<>(config.getMessageHandler(),
+          RpcType.SASL_MESSAGE_VALUE, RpcType.SASL_MESSAGE));
     }
 
     void disableReadTimeout() {
@@ -198,15 +182,15 @@ public class UserServer extends BasicServer<RpcType, BitToUserConnection> {
           .withCredentials(UserCredentials.newBuilder()
               .setUserName(userName)
               .build())
-          .withOptionManager(worker.getSystemOptions())
+          .withOptionManager(userWorker.getSystemOptions())
           .withUserProperties(inbound.getProperties())
           .setSupportComplexTypes(inbound.getSupportComplexTypes())
           .build();
 
       // if inbound impersonation is enabled and a target is mentioned
       final String targetName = session.getTargetUserName();
-      if (impersonationManager != null && targetName != null) {
-        impersonationManager.replaceUserOnSession(targetName, session);
+      if (config.getImpersonationManager() != null && targetName != null) {
+        config.getImpersonationManager().replaceUserOnSession(targetName, session);
       }
     }
 
@@ -228,8 +212,8 @@ public class UserServer extends BasicServer<RpcType, BitToUserConnection> {
     }
 
     @Override
-    public BufferAllocator getAllocator() {
-      return alloc;
+    protected Logger getLogger() {
+      return logger;
     }
 
     @Override
@@ -250,6 +234,7 @@ public class UserServer extends BasicServer<RpcType, BitToUserConnection> {
 
     @Override
     public void close() {
+      session.close();
       super.close();
     }
   }
@@ -302,7 +287,7 @@ public class UserServer extends BasicServer<RpcType, BitToUserConnection> {
 
           connection.setHandshake(inbound);
 
-          if (authProvider == null) { // authentication is disabled
+          if (config.getAuthProvider() == null) { // authentication is disabled
             connection.finalizeSession(inbound.getCredentials().getUserName());
             respBuilder.setStatus(HandshakeStatus.SUCCESS);
             return respBuilder.build();
@@ -320,19 +305,19 @@ public class UserServer extends BasicServer<RpcType, BitToUserConnection> {
               final UserProperties props = inbound.getProperties();
               for (int i = 0; i < props.getPropertiesCount(); i++) {
                 Property prop = props.getProperties(i);
-                if (ConnectionParameters.PASSWORD.equalsIgnoreCase(prop.getKey())) {
+                if (DrillProperties.PASSWORD.equalsIgnoreCase(prop.getKey())) {
                   password = prop.getValue();
                   break;
                 }
               }
-              final PlainFactory plainMechanism = authProvider.getPlainFactory();
+              final PlainFactory plainMechanism = config.getAuthProvider().getPlainFactory();
               if (plainMechanism == null) {
                 throw new UserAuthenticationException("The server no longer supports username/password" +
                     " based authentication. Please talk to your system administrator.");
               }
               plainMechanism.getAuthenticator()
                   .authenticate(userName, password);
-              connection.changeHandlerTo(handler);
+              connection.changeHandlerTo(config.getMessageHandler());
               connection.finalizeSession(userName);
               respBuilder.setStatus(HandshakeStatus.SUCCESS);
               if (logger.isTraceEnabled()) {
@@ -346,7 +331,7 @@ public class UserServer extends BasicServer<RpcType, BitToUserConnection> {
           }
 
           // mention server's authentication capabilities
-          respBuilder.addAllAuthenticationMechanisms(authProvider.getAllFactoryNames());
+          respBuilder.addAllAuthenticationMechanisms(config.getAuthProvider().getAllFactoryNames());
 
           // for now, this means PLAIN credentials will be sent over twice
           // (during handshake and during sasl exchange)
@@ -391,15 +376,4 @@ public class UserServer extends BasicServer<RpcType, BitToUserConnection> {
     return new UserProtobufLengthDecoder(allocator, outOfMemoryHandler);
   }
 
-  @Override
-  public void close() throws IOException {
-    if (authProvider != null) {
-      try {
-        authProvider.close();
-      } catch (Exception e) {
-        logger.warn("Failure closing authentication factory.", e);
-      }
-    }
-    super.close();
-  }
 }

@@ -39,7 +39,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.drill.common.DrillAutoCloseables;
-import org.apache.drill.common.config.ConnectionParameters;
+import org.apache.drill.common.config.DrillProperties;
 import org.apache.drill.common.config.DrillConfig;
 import org.apache.drill.common.exceptions.UserException;
 import org.apache.drill.exec.ExecConstants;
@@ -106,7 +106,7 @@ public class DrillClient implements Closeable, ConnectionThrottle {
   private static final ObjectMapper objectMapper = new ObjectMapper();
   private final DrillConfig config;
   private UserClient client;
-  private ConnectionParameters parameters;
+  private DrillProperties properties;
   private volatile ClusterCoordinator clusterCoordinator;
   private volatile boolean connected = false;
   private final BufferAllocator allocator;
@@ -310,14 +310,13 @@ public class DrillClient implements Closeable, ConnectionThrottle {
     if (connected) {
       return;
     }
-    parameters = ConnectionParameters.createFromProperties(props);
+    properties = DrillProperties.createFromProperties(props);
 
     final List<DrillbitEndpoint> endpoints = new ArrayList<>();
 
     if (isDirectConnection) {
-      // TODO change to ConnectionParameter
       // Populate the endpoints list with all the drillbit information provided in the connection string
-      endpoints.addAll(parseAndVerifyEndpoints(props.getProperty("drillbit"),
+      endpoints.addAll(parseAndVerifyEndpoints(properties.getProperty(DrillProperties.DRILLBIT_CONNECTION),
                                                config.getString(ExecConstants.INITIAL_USER_PORT)));
     } else {
       if (ownsZkConnection) {
@@ -349,10 +348,7 @@ public class DrillClient implements Closeable, ConnectionThrottle {
       }
     };
 
-    // TODO change to ConnectionParameter
-    // "tries" is max number of unique drillbit to try connecting until successfully connected to one of them
-    final String connectTriesConf = (props != null) ? props.getProperty("tries", "5") : "5";
-
+    final String connectTriesConf = properties.getProperty(DrillProperties.TRIES, "5");
     int connectTriesVal;
     try {
       connectTriesVal = Math.min(endpoints.size(), Integer.parseInt(connectTriesConf));
@@ -373,8 +369,8 @@ public class DrillClient implements Closeable, ConnectionThrottle {
       endpoint = endpoints.get(triedEndpointIndex);
       logger.debug("Connecting to server {}:{}", endpoint.getAddress(), endpoint.getUserPort());
 
-      if (parameters.getParameter(ConnectionParameters.SERVICE_HOST) == null) {
-        parameters.setParameter(ConnectionParameters.SERVICE_HOST, endpoint.getAddress());
+      if (properties.getProperty(DrillProperties.SERVICE_HOST) == null) {
+        properties.setProperty(DrillProperties.SERVICE_HOST, endpoint.getAddress());
       }
 
       try {
@@ -431,7 +427,7 @@ public class DrillClient implements Closeable, ConnectionThrottle {
   }
 
   private void connect(DrillbitEndpoint endpoint) throws RpcException {
-    client.connect(endpoint, parameters, getUserCredentials()).checkedGet();
+    client.connect(endpoint, properties, getUserCredentials()).checkedGet();
     if (client.serverRequiresAuthentication()) {
       try {
         client.authenticate(null).checkedGet();
@@ -569,7 +565,7 @@ public class DrillClient implements Closeable, ConnectionThrottle {
    * Helper method to generate the UserCredentials message from the properties.
    */
   private UserBitShared.UserCredentials getUserCredentials() {
-    String userName = parameters.getParameter(ConnectionParameters.USER);
+    String userName = properties.getProperty(DrillProperties.USER);
     if (Strings.isNullOrEmpty(userName)) {
       userName = "anonymous"; // if username is not propagated as one of the properties
     }

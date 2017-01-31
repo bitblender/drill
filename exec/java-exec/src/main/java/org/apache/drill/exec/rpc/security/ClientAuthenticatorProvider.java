@@ -57,6 +57,10 @@ public class ClientAuthenticatorProvider implements AuthenticatorProvider {
         throw new DrillRuntimeException("Failed to create auth factory.", e);
       }
     }
+
+    if (logger.isDebugEnabled()) {
+      logger.debug("Configured mechanisms: {}", authFactories.keySet());
+    }
   }
 
   @Override

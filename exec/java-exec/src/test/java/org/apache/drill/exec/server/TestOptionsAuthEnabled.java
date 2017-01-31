@@ -20,7 +20,7 @@ package org.apache.drill.exec.server;
 import com.google.common.collect.Lists;
 import com.typesafe.config.ConfigValueFactory;
 import org.apache.drill.BaseTestQuery;
-import org.apache.drill.common.config.ConnectionParameters;
+import org.apache.drill.common.config.DrillProperties;
 import org.apache.drill.common.config.DrillConfig;
 import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.rpc.user.security.testing.UserAuthenticatorTestImpl;
@@ -58,8 +58,8 @@ public class TestOptionsAuthEnabled extends BaseTestQuery {
         false);
 
     final Properties connectionProps = new Properties();
-    connectionProps.setProperty(ConnectionParameters.USER, PROCESS_USER);
-    connectionProps.setProperty(ConnectionParameters.PASSWORD, PROCESS_USER_PASSWORD);
+    connectionProps.setProperty(DrillProperties.USER, PROCESS_USER);
+    connectionProps.setProperty(DrillProperties.PASSWORD, PROCESS_USER_PASSWORD);
 
     updateTestCluster(1, config, connectionProps);
 

@@ -20,7 +20,7 @@ package org.apache.drill.exec.rpc.security;
 import com.google.common.collect.Lists;
 import com.typesafe.config.ConfigValueFactory;
 import org.apache.drill.BaseTestQuery;
-import org.apache.drill.common.config.ConnectionParameters;
+import org.apache.drill.common.config.DrillProperties;
 import org.apache.drill.common.config.DrillConfig;
 import org.apache.drill.exec.ExecConstants;
 import org.junit.AfterClass;
@@ -46,7 +46,7 @@ public class TestSaslExchange extends BaseTestQuery {
         false);
 
     final Properties connectionProps = new Properties();
-    connectionProps.setProperty(ConnectionParameters.PASSWORD, "anything works!");
+    connectionProps.setProperty(DrillProperties.PASSWORD, "anything works!");
     updateTestCluster(3, newConfig, connectionProps);
   }
 

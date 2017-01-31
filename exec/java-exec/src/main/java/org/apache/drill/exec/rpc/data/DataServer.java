@@ -22,8 +22,6 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.util.concurrent.GenericFutureListener;
 
-import org.apache.drill.exec.ExecConstants;
-import org.apache.drill.exec.exception.DrillbitStartupException;
 import org.apache.drill.exec.memory.BufferAllocator;
 import org.apache.drill.exec.proto.BitData.BitClientHandshake;
 import org.apache.drill.exec.proto.BitData.BitServerHandshake;
@@ -34,38 +32,21 @@ import org.apache.drill.exec.rpc.OutOfMemoryHandler;
 import org.apache.drill.exec.rpc.ProtobufLengthDecoder;
 import org.apache.drill.exec.rpc.ResponseSender;
 import org.apache.drill.exec.rpc.RpcException;
-import org.apache.drill.exec.rpc.control.WorkEventBus;
-import org.apache.drill.exec.rpc.security.AuthenticatorProvider;
-import org.apache.drill.exec.server.BootStrapContext;
-import org.apache.drill.exec.work.WorkManager.WorkerBee;
 
 import com.google.protobuf.MessageLite;
 
 public class DataServer extends BasicServer<RpcType, DataServerConnection> {
-  static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DataServer.class);
+  private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DataServer.class);
 
-  private volatile ProxyCloseHandler proxyCloseHandler;
-  private final BootStrapContext context;
-  private final DataServerRequestHandler handler;
-  private final AuthenticatorProvider authProvider;
+  private final ServerConnectionConfigImpl config;
 
-  public DataServer(BootStrapContext context, BufferAllocator alloc, WorkEventBus workBus,
-      WorkerBee bee) throws DrillbitStartupException {
+  public DataServer(ServerConnectionConfigImpl config) {
     super(
-        DataRpcConfig.getMapping(context.getConfig(), context.getExecutor()),
-        alloc.getAsByteBufAllocator(),
-        context.getBitLoopGroup());
-    this.context = context;
-    this.handler = new DataServerRequestHandler(workBus, bee);
-    if (context.getConfig().getBoolean(ExecConstants.BIT_AUTHENTICATION_ENABLED)) {
-      authProvider = context.getAuthProvider();
-      if (authProvider.getAllFactoryNames().size() == 0) {
-        throw new DrillbitStartupException("Authentication enabled, but no mechanisms found. Please check " +
-            "authentication configuration.");
-      }
-    } else {
-      authProvider = null;
-    }
+        DataRpcConfig.getMapping(config.getBootstrapContext().getConfig(),
+            config.getBootstrapContext().getExecutor()),
+        config.getAllocator().getAsByteBufAllocator(),
+        config.getBootstrapContext().getBitLoopGroup());
+    this.config = config;
   }
 
   @Override
@@ -75,14 +56,13 @@ public class DataServer extends BasicServer<RpcType, DataServerConnection> {
 
   @Override
   protected GenericFutureListener<ChannelFuture> getCloseHandler(SocketChannel ch, DataServerConnection connection) {
-    this.proxyCloseHandler = new ProxyCloseHandler(super.getCloseHandler(ch, connection));
-    return proxyCloseHandler;
+    return new ProxyCloseHandler(super.getCloseHandler(ch, connection));
   }
 
   @Override
   public DataServerConnection initRemoteConnection(SocketChannel channel) {
     super.initRemoteConnection(channel);
-    return new DataServerConnection(channel, context.getAllocator(), authProvider, handler);
+    return new DataServerConnection(channel, config);
   }
 
   @Override
@@ -103,8 +83,8 @@ public class DataServer extends BasicServer<RpcType, DataServerConnection> {
 
         final BitServerHandshake.Builder builder = BitServerHandshake.newBuilder();
         builder.setRpcVersion(DataRpcConfig.RPC_VERSION);
-        if (authProvider != null) {
-          builder.addAllAuthenticationMechanisms(authProvider.getAllFactoryNames());
+        if (config.getAuthProvider() != null) {
+          builder.addAllAuthenticationMechanisms(config.getAuthProvider().getAllFactoryNames());
         }
         return builder.build();
       }
@@ -113,7 +93,8 @@ public class DataServer extends BasicServer<RpcType, DataServerConnection> {
   }
 
   @Override
-  protected void handle(DataServerConnection connection, int rpcType, ByteBuf pBody, ByteBuf body, ResponseSender sender) throws RpcException {
+  protected void handle(DataServerConnection connection, int rpcType, ByteBuf pBody, ByteBuf body,
+                        ResponseSender sender) throws RpcException {
     connection.getCurrentHandler().handle(connection, rpcType, pBody, body, sender);
   }
 

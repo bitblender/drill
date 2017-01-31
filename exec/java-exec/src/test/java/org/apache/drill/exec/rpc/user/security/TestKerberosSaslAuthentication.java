@@ -20,7 +20,7 @@ package org.apache.drill.exec.rpc.user.security;
 import com.google.common.collect.Lists;
 import com.typesafe.config.ConfigValueFactory;
 import org.apache.drill.BaseTestQuery;
-import org.apache.drill.common.config.ConnectionParameters;
+import org.apache.drill.common.config.DrillProperties;
 import org.apache.drill.common.config.DrillConfig;
 import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.rpc.user.security.testing.UserAuthenticatorTestImpl;
@@ -61,7 +61,7 @@ public class TestKerberosSaslAuthentication extends BaseTestQuery {
 
   private static final String CLIENT_SHORT_NAME = "testUser";
   private static final String CLIENT_PRINCIPAL = CLIENT_SHORT_NAME + "@" + REALM;
-  private static final String SERVER_SHORT_NAME = "server";
+  private static final String SERVER_SHORT_NAME = "skatkam";
   private static final String SERVER_PRINCIPAL = SERVER_SHORT_NAME + "/" + HOSTNAME + "@" + REALM;
 
   private static File keytabDir;
@@ -120,8 +120,8 @@ public class TestKerberosSaslAuthentication extends BaseTestQuery {
         false);
 
     final Properties connectionProps = new Properties();
-    connectionProps.setProperty(ConnectionParameters.USER, "anonymous");
-    connectionProps.setProperty(ConnectionParameters.PASSWORD, "anything works!");
+    connectionProps.setProperty(DrillProperties.USER, "anonymous");
+    connectionProps.setProperty(DrillProperties.PASSWORD, "anything works!");
 
     // ADD A NOTE EXPLAINING THIS MAGIC
     // ignore the compile time warning caused by this.
@@ -190,9 +190,9 @@ public class TestKerberosSaslAuthentication extends BaseTestQuery {
   @Test
   public void successKeytab() throws Exception {
     final Properties connectionProps = new Properties();
-    connectionProps.setProperty(ConnectionParameters.SERVICE_PRINCIPAL, SERVER_PRINCIPAL);
-    connectionProps.setProperty(ConnectionParameters.USER, CLIENT_PRINCIPAL);
-    connectionProps.setProperty(ConnectionParameters.KEYTAB, clientKeytab.getAbsolutePath());
+    connectionProps.setProperty(DrillProperties.SERVICE_PRINCIPAL, SERVER_PRINCIPAL);
+    connectionProps.setProperty(DrillProperties.USER, CLIENT_PRINCIPAL);
+    connectionProps.setProperty(DrillProperties.KEYTAB, clientKeytab.getAbsolutePath());
     updateClient(connectionProps);
 
     // Run few queries using the new client
@@ -212,8 +212,8 @@ public class TestKerberosSaslAuthentication extends BaseTestQuery {
   @Test
   public void successTicket() throws Exception {
     final Properties connectionProps = new Properties();
-    connectionProps.setProperty(ConnectionParameters.SERVICE_PRINCIPAL, SERVER_PRINCIPAL);
-    connectionProps.setProperty(ConnectionParameters.KERBEROS_FROM_SUBJECT, "true");
+    connectionProps.setProperty(DrillProperties.SERVICE_PRINCIPAL, SERVER_PRINCIPAL);
+    connectionProps.setProperty(DrillProperties.KERBEROS_FROM_SUBJECT, "true");
     final Subject clientSubject = JaasKrbUtil.loginUsingKeytab(CLIENT_PRINCIPAL, clientKeytab.getAbsoluteFile());
 
     Subject.doAs(clientSubject, new PrivilegedExceptionAction<Void>() {
