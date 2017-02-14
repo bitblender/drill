@@ -59,6 +59,9 @@ private:
 
     static int userNameCallback(void *context, int id, const char **result, unsigned int *len);
 
+    static int loggingCallback(void *context, int priority, const char *message);
+
+
 };
 
 } /* namespace Drill */

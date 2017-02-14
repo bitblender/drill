@@ -23,7 +23,7 @@
 #include <boost/thread.hpp>
 #include "drill/drillc.hpp"
 
-int nOptions=14;
+int nOptions=15;
 
 struct Option{
     char name[32];
@@ -43,7 +43,8 @@ struct Option{
     {"queryTimeout", "Query timeout (second).", false},
     {"user", "Username", false},
     {"password", "Password", false},
-    {"saslPluginPath", "Path to where SASL plugins are installed", false}
+    {"saslPluginPath", "Path to where SASL plugins are installed", false},
+    {"mech", "Authentication Mechanism", false}
 };
 
 std::map<std::string, std::string> qsOptionValues;
@@ -286,6 +287,7 @@ int main(int argc, char* argv[]) {
         std::string user=qsOptionValues["user"];
         std::string password=qsOptionValues["password"];
         std::string saslPluginPath=qsOptionValues["saslPluginPath"];
+        std::string mech=qsOptionValues["mech"];
 
         Drill::QueryType type;
 
@@ -360,6 +362,10 @@ int main(int argc, char* argv[]) {
             props.setProperty(USERPROP_PASSWORD, password);
         }
 
+        if(mech.length()>0){
+            printf ("setting auth mech to %s\n", mech.c_str());
+            props.setProperty(USERPROP_AUTH_MECHANISM, mech);
+        }
         props.setProperty("someRandomProperty", "someRandomValue");
 
         if(client.connect(connectStr.c_str(), &props)!=Drill::CONN_SUCCESS){

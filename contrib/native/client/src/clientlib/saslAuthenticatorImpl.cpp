@@ -31,11 +31,15 @@ namespace Drill {
 #define KERBEROS_SIMPLE_NAME "kerberos"
 #define KERBEROS_SASL_NAME "gssapi"
 #define PLAIN_NAME "plain"
+#define MAPR_SECURITY_SIMPLE_NAME "maprsasl"
+#define MAPR_SECURITY_SASL_NAME "mapr-security"
 
 const std::map<std::string, std::string> SaslAuthenticatorImpl::MECHANISM_MAPPING = boost::assign::map_list_of
     (KERBEROS_SIMPLE_NAME, KERBEROS_SASL_NAME)
     (PLAIN_NAME, PLAIN_NAME)
+	(MAPR_SECURITY_SIMPLE_NAME, MAPR_SECURITY_SASL_NAME)
 ;
+
 
 boost::mutex SaslAuthenticatorImpl::s_mutex;
 bool SaslAuthenticatorImpl::s_initialized = false;
@@ -54,7 +58,9 @@ SaslAuthenticatorImpl::SaslAuthenticatorImpl(const DrillUserProperties* const pr
                 sasl_set_path(0, saslPluginPath);
             }
 
-            sasl_client_init(NULL);
+            int err = sasl_client_init(NULL);
+            DRILL_MT_LOG(DRILL_LOG(LOG_TRACE) << "SASL client init returned " << err << " " << std::endl;)
+
             { // for debugging purposes
                 const char **mechanisms = sasl_global_listmech();
                 int i = 1;
@@ -105,6 +111,33 @@ int SaslAuthenticatorImpl::passwordCallback(sasl_conn_t *conn, void *context, in
     return SASL_OK;
 }
 
+//Note: Some messages, early in the SASL setup, might go to syslog and not end up here
+int SaslAuthenticatorImpl::loggingCallback (void *context __attribute__((unused)),
+	    int priority,
+	    const char *message)
+{
+  const char *label;
+
+  if (!message)
+    return SASL_BADPARAM;
+
+  switch (priority) {
+  case SASL_LOG_ERR:
+    label = "Error";
+    break;
+  case SASL_LOG_NOTE:
+    label = "Info";
+    break;
+  default:
+    label = "Other";
+    break;
+  }
+
+  DRILL_MT_LOG(DRILL_LOG(LOG_TRACE) << "SASL Log : " << label <<
+		                               " : " << message << std::endl;)
+  return SASL_OK;
+}
+
 int SaslAuthenticatorImpl::init(const std::vector<std::string>& mechanisms, exec::shared::SaslMessage& response) {
     // find and set parameters
     std::string authMechanismToUse;
@@ -153,6 +186,7 @@ int SaslAuthenticatorImpl::init(const std::vector<std::string>& mechanisms, exec
         { SASL_CB_USER, (sasl_callback_proc_t) &userNameCallback, (void *) &m_username },
         { SASL_CB_AUTHNAME, (sasl_callback_proc_t) &userNameCallback, (void *) &m_username },
         { SASL_CB_PASS, (sasl_callback_proc_t) &passwordCallback, (void *) this },
+		{ SASL_CB_LOG, (sasl_callback_proc_t) &loggingCallback, (void *) NULL },
         { SASL_CB_LIST_END, NULL, NULL }
     };
     if (serviceName.empty()) serviceName = DEFAULT_SERVICE_NAME;
