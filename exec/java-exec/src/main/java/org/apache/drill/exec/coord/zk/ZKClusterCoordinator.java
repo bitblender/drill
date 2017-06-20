@@ -101,6 +101,7 @@ public class ZKClusterCoordinator extends ClusterCoordinator {
       .connectionTimeoutMs(config.getInt(ExecConstants.ZK_TIMEOUT))
       .retryPolicy(rp)
       .connectString(connect)
+      .aclProvider(new MapRSaslACLProvider(clusterId, zkRoot))
       .build();
     curator.getConnectionStateListenable().addListener(new InitialConnectionListener());
     curator.start();
