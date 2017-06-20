@@ -123,7 +123,7 @@ public class Drillbit implements AutoCloseable {
   public void run() throws Exception {
     final Stopwatch w = Stopwatch.createStarted();
     logger.debug("Startup begun.");
-    coord.start(10000);
+    coord.start(0);
     storeProvider.start();
     if (profileStoreProvider != storeProvider) {
       profileStoreProvider.start();

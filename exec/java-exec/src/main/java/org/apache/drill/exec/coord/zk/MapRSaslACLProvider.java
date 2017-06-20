@@ -48,7 +48,9 @@ public class MapRSaslACLProvider implements ACLProvider {
     }
 
     public List<ACL> getAclForPath(String path) {
+        logger.trace("MapRSaslACLProvider: getAclForPath " + path);
         if(path.equals(drillClusterPath)) {
+            logger.trace("MapRSaslACLProvider: getAclForPath drillClusterPath " + drillClusterPath);
             return Ids.READ_ACL_UNSAFE;
         }
         return DEFAULT_ACL;
