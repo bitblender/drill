@@ -18,40 +18,42 @@
 
 package org.apache.drill.exec.coord.zk;
 
+import com.google.common.collect.ImmutableList;
 import org.apache.curator.framework.api.ACLProvider;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.data.ACL;
-import org.apache.zookeeper.data.Id;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
-public class MapRSaslACLProvider implements ACLProvider {
+public class ZKACLProvider implements ACLProvider {
 
-    static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(MapRSaslACLProvider.class);
-    static ArrayList<ACL> DEFAULT_ACL = new ArrayList(Collections.singletonList(new ACL(1, new Id("sasl", "mapr"))));
-
+    static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ZKACLProvider.class);
+    static ImmutableList<ACL> DEFAULT_ACL = new ImmutableList.Builder<ACL>()
+                                              .addAll(Ids.CREATOR_ALL_ACL.iterator())
+                                              .build();
+    static ImmutableList<ACL> DRILL_CLUSTER_ACL = new ImmutableList.Builder<ACL>()
+                                                .addAll(Ids.READ_ACL_UNSAFE.iterator())
+                                                .addAll(Ids.CREATOR_ALL_ACL.iterator())
+                                                .build();
     final String clusterName;
     final String drillZkRoot;
     final String drillClusterPath;
 
-    public MapRSaslACLProvider(String clusterName, String drillZKRoot) {
+    public ZKACLProvider(String clusterName, String drillZKRoot) {
         this.clusterName = clusterName;
         this.drillZkRoot = drillZKRoot;
-        this.drillClusterPath = this.drillZkRoot +  this.clusterName ;
+        this.drillClusterPath = "/" + this.drillZkRoot + "/" +  this.clusterName ;
     }
 
     public List<ACL> getDefaultAcl() {
-        //return Ids.OPEN_ACL_UNSAFE;
         return DEFAULT_ACL;
     }
 
     public List<ACL> getAclForPath(String path) {
-        logger.trace("MapRSaslACLProvider: getAclForPath " + path);
+        logger.trace("ZKACLProvider: getAclForPath " + path);
         if(path.equals(drillClusterPath)) {
-            logger.trace("MapRSaslACLProvider: getAclForPath drillClusterPath " + drillClusterPath);
-            return Ids.READ_ACL_UNSAFE;
+            logger.trace("ZKACLProvider: getAclForPath drillClusterPath " + drillClusterPath);
+            return DRILL_CLUSTER_ACL;
         }
         return DEFAULT_ACL;
     }
