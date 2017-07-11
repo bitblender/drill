@@ -96,8 +96,7 @@ public class ZKClusterCoordinator extends ClusterCoordinator {
     logger.debug("Connect {}, zkRoot {}, clusterId: " + clusterId, connect, zkRoot);
 
     this.serviceName = clusterId;
-    ACLProvider aclProvider = config.getBoolean(ExecConstants.ZK_SECURE_ACL) ?
-                                new ZKACLProvider(clusterId, zkRoot) : new DefaultACLProvider();
+    ACLProvider aclProvider = ZKACLProviderFactory.getACLProvider(config, clusterId, zkRoot);
     RetryPolicy rp = new RetryNTimes(config.getInt(ExecConstants.ZK_RETRY_TIMES),
       config.getInt(ExecConstants.ZK_RETRY_DELAY));
     curator = CuratorFrameworkFactory.builder()
