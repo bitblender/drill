@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import javax.annotation.security.PermitAll;
+import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -55,6 +56,8 @@ import org.glassfish.jersey.server.mvc.Viewable;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 
+import static org.apache.drill.exec.server.rest.auth.DrillUserPrincipal.ADMIN_ROLE;
+
 @Path("/")
 @PermitAll
 public class DrillRoot {
@@ -73,6 +76,7 @@ public class DrillRoot {
     forcefulShutdown, gracefulShutdown, quiescent
   }
 
+  @RolesAllowed(ADMIN_ROLE)
   @GET
   @Produces(MediaType.TEXT_HTML)
   public Viewable getClusterInfo() {
@@ -131,6 +135,7 @@ public class DrillRoot {
     return response;
   }
 
+  @RolesAllowed(ADMIN_ROLE)
   @SuppressWarnings("resource")
   @POST
   @Path("/gracefulShutdown")
@@ -141,6 +146,7 @@ public class DrillRoot {
 
   }
 
+  @RolesAllowed(ADMIN_ROLE)
   @SuppressWarnings("resource")
   @POST
   @Path("/shutdown")
@@ -152,6 +158,7 @@ public class DrillRoot {
 
   }
 
+  @RolesAllowed(ADMIN_ROLE)
   @SuppressWarnings("resource")
   @POST
   @Path("/quiescent")
@@ -162,7 +169,7 @@ public class DrillRoot {
     return shutdown(resp);
   }
 
-
+  @RolesAllowed(ADMIN_ROLE)
   @SuppressWarnings("resource")
   @GET
   @Path("/cluster.json")
