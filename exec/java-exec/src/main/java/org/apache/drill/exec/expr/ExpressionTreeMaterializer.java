@@ -381,6 +381,7 @@ public class ExpressionTreeMaterializer {
       return new BooleanOperator(op.getName(), args, op.getPosition());
     }
 
+
     private int computePrecision(LogicalExpression currentArg) {
         int precision = currentArg.getMajorType().getPrecision();
         if (currentArg.getMajorType().getMinorType() == MinorType.INT) {

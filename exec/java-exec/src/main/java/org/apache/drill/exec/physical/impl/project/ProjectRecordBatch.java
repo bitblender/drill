@@ -84,6 +84,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
   private static final String EMPTY_STRING = "";
   private boolean first = true;
   private boolean wasNone = false; // whether a NONE iter outcome was already seen
+  public static int codeGenCountHack = 0;
 
   private class ClassifierResult {
     public boolean isStar = false;
@@ -322,7 +323,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
     final ClassGenerator<Projector> cg = CodeGenerator.getRoot(Projector.TEMPLATE_DEFINITION, context.getOptions());
     cg.getCodeGenerator().plainJavaCapable(true);
     // Uncomment out this line to debug the generated code.
-    // cg.getCodeGenerator().saveCodeForDebugging(true);
+    cg.getCodeGenerator().saveCodeForDebugging(true);
 
     final IntHashSet transferFieldIds = new IntHashSet();
 
@@ -486,12 +487,22 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
       codeGen.plainJavaCapable(true);
       // Uncomment out this line to debug the generated code.
       // codeGen.saveCodeForDebugging(true);
-      this.projector = context.getImplementationClass(codeGen);
+      //this.projector = context.getImplementationClass(codeGen);
+      if (codeGenCountHack == 0) {
+        codeGenCountHack++;
+//        this.projector = new org.apache.drill.exec.test.generated.ProjectorGen0Karthik();
+      } else if (codeGenCountHack == 1) {
+//        this.projector = new  org.apache.drill.exec.test.generated.ProjectorGen2Karthik();
+      }
       projector.setup(context, incomingBatch, this, transfers);
-    } catch (ClassTransformationException | IOException e) {
-      throw new SchemaChangeException("Failure while attempting to load generated class", e);
-    }
+//    } catch (ClassTransformationException | IOException e) {
+//      throw new SchemaChangeException("Failure while attempting to load generated class", e);
+//    }
+      } catch (Exception e) {
+        throw new IllegalStateException(e);
+      }
   }
+
 
   @Override
   protected boolean setupNewSchema() throws SchemaChangeException {
