@@ -196,7 +196,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
       return IterOutcome.OUT_OF_MEMORY;
     }
 
-    final int outputRecords = projector.projectRecords(0, incomingRecordCount, 0);
+    final int outputRecords = projector.projectRecords(0, incomingRecordCount, 0, container.getAllocator());
     if (outputRecords < incomingRecordCount) {
       setValueCount(outputRecords);
       hasRemainder = true;
@@ -224,7 +224,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
       outOfMemory = true;
       return;
     }
-    final int projRecords = projector.projectRecords(remainderIndex, remainingRecordCount, 0);
+    final int projRecords = projector.projectRecords(remainderIndex, remainingRecordCount, 0, container.getAllocator());
     if (projRecords < remainingRecordCount) {
       setValueCount(projRecords);
       this.recordCount = projRecords;
@@ -487,17 +487,19 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
       codeGen.plainJavaCapable(true);
       // Uncomment out this line to debug the generated code.
       // codeGen.saveCodeForDebugging(true);
-      //this.projector = context.getImplementationClass(codeGen);
-      if (codeGenCountHack == 0) {
-        codeGenCountHack++;
-//        this.projector = new org.apache.drill.exec.test.generated.ProjectorGen0Karthik();
-      } else if (codeGenCountHack == 1) {
-//        this.projector = new  org.apache.drill.exec.test.generated.ProjectorGen2Karthik();
-      }
-      projector.setup(context, incomingBatch, this, transfers);
+      this.projector = context.getImplementationClass(codeGen);
 //    } catch (ClassTransformationException | IOException e) {
 //      throw new SchemaChangeException("Failure while attempting to load generated class", e);
 //    }
+
+      if (codeGenCountHack == 0) {
+        codeGenCountHack++;
+        this.projector = new org.apache.drill.exec.test.generated.KMProjectorGen0();
+      } else if (codeGenCountHack == 1) {
+        this.projector = new  org.apache.drill.exec.test.generated.KMProjectorGen2();
+      }
+      projector.setup(context, incomingBatch, this, transfers);
+
       } catch (Exception e) {
         throw new IllegalStateException(e);
       }

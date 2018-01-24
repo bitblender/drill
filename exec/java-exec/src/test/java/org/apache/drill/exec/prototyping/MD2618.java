@@ -21,9 +21,11 @@ package org.apache.drill.exec.prototyping;
 import ch.qos.logback.classic.Level;
 import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.compile.ClassBuilder;
-import org.apache.drill.exec.compile.CodeCompiler;
-import org.apache.drill.test.*;
-//import org.apache.drill.test.BaseDirTestWatcher;
+import org.apache.drill.test.BaseDirTestWatcher;
+import org.apache.drill.test.ClientFixture;
+import org.apache.drill.test.ClusterFixture;
+import org.apache.drill.test.LogFixture;
+import org.apache.drill.test.DrillTest;
 import org.junit.Rule;
 import org.junit.Test;
 
@@ -31,9 +33,9 @@ public class MD2618 extends DrillTest {
 
     public static final String GENERATED_SOURCES_DIR = "/Users/karthik/git-sources/drill-fork/" +
                                                        "exec/java-exec/target/generated-sources/";
+    @Rule
+    public final BaseDirTestWatcher dirTestWatcher = new BaseDirTestWatcher();
 
-    //    @Rule
-//    public final BaseDirTestWatcher dirTestWatcher = new BaseDirTestWatcher();
     @Test
     public void testProjectSimple() throws Exception {
 
@@ -41,7 +43,7 @@ public class MD2618 extends DrillTest {
                 .logger("org.apache.drill", Level.TRACE).toConsole();
 
         try (//LogFixture logs = logBuilder.build();
-             ClusterFixture cluster = ClusterFixture.builder(new BaseDirTestWatcher())
+             ClusterFixture cluster = ClusterFixture.builder(dirTestWatcher)
                                  .configProperty(ClassBuilder.CODE_DIR_OPTION, GENERATED_SOURCES_DIR)
                                  .configProperty(ExecConstants.BIT_RPC_TIMEOUT, 0)
                                  .configProperty(ExecConstants.USER_RPC_TIMEOUT, 0)
@@ -54,5 +56,9 @@ public class MD2618 extends DrillTest {
                     "                          , eidpluspid + 5 as eidpluspidplus5 " +
                     "                   from cp.`employee.json` limit 2 ").printCsv();
         }
+
+
+
+
     }
 }
