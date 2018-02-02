@@ -20,8 +20,6 @@ package org.apache.drill.exec.physical.impl.project;
 import com.carrotsearch.hppc.IntHashSet;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import org.apache.commons.collections.map.CaseInsensitiveMap;
 import org.apache.drill.common.expression.ConvertExpression;
 import org.apache.drill.common.expression.ErrorCollector;
 import org.apache.drill.common.expression.ErrorCollectorImpl;
@@ -48,6 +46,7 @@ import org.apache.drill.exec.expr.ValueVectorReadExpression;
 import org.apache.drill.exec.expr.ValueVectorWriteExpression;
 import org.apache.drill.exec.ops.FragmentContext;
 import org.apache.drill.exec.physical.config.Project;
+import org.apache.drill.exec.physical.rowSet.impl.ResultSetLoaderImpl;
 import org.apache.drill.exec.planner.StarColumnHelper;
 import org.apache.drill.exec.record.AbstractSingleRecordBatch;
 import org.apache.drill.exec.record.BatchSchema.SelectionVectorMode;
@@ -66,11 +65,10 @@ import org.apache.drill.exec.vector.UntypedNullVector;
 import org.apache.drill.exec.vector.ValueVector;
 import org.apache.drill.exec.vector.complex.writer.BaseWriter.ComplexWriter;
 
-import java.util.HashMap;
 import java.util.List;
 
-public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
-  static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ProjectRecordBatch.class);
+public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
+  static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ProjectRecordBatch2.class);
   private Projector projector;
   private List<ValueVector> allocationVectors;
   private List<ComplexWriter> complexWriters;
@@ -79,32 +77,21 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
   private int remainderIndex = 0;
   private int recordCount;
 
-  private static final String EMPTY_STRING = "";
+  private ResultSetLoaderImpl rsLoader;
+
+
   private boolean first = true;
   private boolean wasNone = false; // whether a NONE iter outcome was already seen
   public static int codeGenCountHack = 0;
 
-  private class ClassifierResult {
-    public boolean isStar = false;
-    public List<String> outputNames;
-    public String prefix = "";
-    public HashMap<String, Integer> prefixMap = Maps.newHashMap();
-    public CaseInsensitiveMap outputMap = new CaseInsensitiveMap();
-    private final CaseInsensitiveMap sequenceMap = new CaseInsensitiveMap();
 
-    private void clear() {
-      isStar = false;
-      prefix = "";
-      if (outputNames != null) {
-        outputNames.clear();
-      }
-
-      // note:  don't clear the internal maps since they have cumulative data..
-    }
+  public void UNIMPLEMENTED() {
+    throw new RuntimeException("Unimplemented");
   }
 
-  public ProjectRecordBatch(final Project pop, final RecordBatch incoming, final FragmentContext context) throws OutOfMemoryException {
+  public ProjectRecordBatch2(final Project pop, final RecordBatch incoming, final FragmentContext context) throws OutOfMemoryException {
     super(pop, context, incoming);
+
   }
 
   @Override
@@ -118,7 +105,6 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
     super.killIncoming(sendUpstream);
     hasRemainder = false;
   }
-
 
   @Override
   public IterOutcome innerNext() {
@@ -243,10 +229,6 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
     }
   }
 
-  public void addComplexWriter(final ComplexWriter writer) {
-    complexWriters.add(writer);
-  }
-
   private boolean doAlloc(int recordCount) {
     //Allocate vv in the allocationVectors.
     for (final ValueVector v : this.allocationVectors) {
@@ -299,7 +281,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
       return false;
     }
     final NameSegment expr = ((SchemaPath)ex.getExpr()).getRootSegment();
-    return expr.getPath().contains(SchemaPath.DYNAMIC_STAR);
+    return expr.getPath().contains(StarColumnHelper.STAR_COLUMN);
   }
 
   private void setupNewSchemaFromInput(RecordBatch incomingBatch) throws SchemaChangeException {
@@ -327,14 +309,14 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
 
     final boolean isAnyWildcard = isAnyWildcard(exprs);
 
-    final ClassifierResult result = new ClassifierResult();
+    final ExpressionClassifier.ClassifierResult result = new ExpressionClassifier.ClassifierResult();
     final boolean classify = isClassificationNeeded(exprs);
 
     for (NamedExpression namedExpression : exprs) {
       result.clear();
 
       if (classify && namedExpression.getExpr() instanceof SchemaPath) {
-        classifyExpr(namedExpression, incomingBatch, result);
+        ExpressionClassifier.classifyExpr(namedExpression, incomingBatch, result);
 
         if (result.isStar) {
           // The value indicates which wildcard we are processing now
@@ -397,7 +379,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
         // it is still necessary to ensure the output column name is unique
         result.outputNames = Lists.newArrayList();
         final String outputName = getRef(namedExpression).getRootSegment().getPath();
-        addToResultMaps(outputName, result, true);
+        ExpressionClassifier.addToResultMaps(outputName, result, true);
       }
 
       String outputName = getRef(namedExpression).getRootSegment().getPath();
@@ -442,6 +424,9 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
         transferFieldIds.add(vectorRead.getFieldId().getFieldIds()[0]);
       } else if (expr instanceof DrillFuncHolderExpr &&
           ((DrillFuncHolderExpr) expr).getHolder().isComplexWriterFuncHolder()) {
+
+        UNIMPLEMENTED();
+
         // Need to process ComplexWriter function evaluation.
         // Lazy initialization of the list of complex writers, if not done yet.
         if (complexWriters == null) {
@@ -553,7 +538,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
       final NameSegment expr = ((SchemaPath) ex.getExpr()).getRootSegment();
       final NameSegment ref = ex.getRef().getRootSegment();
       final boolean refHasPrefix = ref.getPath().contains(StarColumnHelper.PREFIX_DELIMITER);
-      final boolean exprContainsStar = expr.getPath().contains(SchemaPath.DYNAMIC_STAR);
+      final boolean exprContainsStar = expr.getPath().contains(StarColumnHelper.STAR_COLUMN);
 
       if (refHasPrefix || exprContainsStar) {
         needed = true;
@@ -563,222 +548,9 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
     return needed;
   }
 
-  private String getUniqueName(final String name, final ClassifierResult result) {
-    final Integer currentSeq = (Integer) result.sequenceMap.get(name);
-    if (currentSeq == null) { // name is unique, so return the original name
-      final Integer n = -1;
-      result.sequenceMap.put(name, n);
-      return name;
-    }
-    // create a new name
-    final Integer newSeq = currentSeq + 1;
-    final String newName = name + newSeq;
-    result.sequenceMap.put(name, newSeq);
-    result.sequenceMap.put(newName, -1);
 
-    return newName;
-  }
 
-  /**
-  * Helper method to ensure unique output column names. If allowDupsWithRename is set to true, the original name
-  * will be appended with a suffix number to ensure uniqueness. Otherwise, the original column would not be renamed even
-  * even if it has been used
-  *
-  * @param origName            the original input name of the column
-  * @param result              the data structure to keep track of the used names and decide what output name should be
-  *                            to ensure uniqueness
-  * @param allowDupsWithRename if the original name has been used, is renaming allowed to ensure output name unique
-  */
-  private void addToResultMaps(final String origName, final ClassifierResult result, final boolean allowDupsWithRename) {
-    String name = origName;
-    if (allowDupsWithRename) {
-      name = getUniqueName(origName, result);
-    }
-    if (!result.outputMap.containsKey(name)) {
-      result.outputNames.add(name);
-      result.outputMap.put(name,  name);
-    } else {
-      result.outputNames.add(EMPTY_STRING);
-    }
-  }
 
-  private void classifyExpr(final NamedExpression ex, final RecordBatch incoming, final ClassifierResult result)  {
-    final NameSegment expr = ((SchemaPath)ex.getExpr()).getRootSegment();
-    final NameSegment ref = ex.getRef().getRootSegment();
-    final boolean exprHasPrefix = expr.getPath().contains(StarColumnHelper.PREFIX_DELIMITER);
-    final boolean refHasPrefix = ref.getPath().contains(StarColumnHelper.PREFIX_DELIMITER);
-    final boolean exprIsStar = expr.getPath().equals(SchemaPath.DYNAMIC_STAR);
-    final boolean refContainsStar = ref.getPath().contains(SchemaPath.DYNAMIC_STAR);
-    final boolean exprContainsStar = expr.getPath().contains(SchemaPath.DYNAMIC_STAR);
-    final boolean refEndsWithStar = ref.getPath().endsWith(SchemaPath.DYNAMIC_STAR);
-
-    String exprPrefix = EMPTY_STRING;
-    String exprSuffix = expr.getPath();
-
-    if (exprHasPrefix) {
-      // get the prefix of the expr
-      final String[] exprComponents = expr.getPath().split(StarColumnHelper.PREFIX_DELIMITER, 2);
-      assert(exprComponents.length == 2);
-      exprPrefix = exprComponents[0];
-      exprSuffix = exprComponents[1];
-      result.prefix = exprPrefix;
-    }
-
-    boolean exprIsFirstWildcard = false;
-    if (exprContainsStar) {
-      result.isStar = true;
-      final Integer value = result.prefixMap.get(exprPrefix);
-      if (value == null) {
-        final Integer n = 1;
-        result.prefixMap.put(exprPrefix, n);
-        exprIsFirstWildcard = true;
-      } else {
-        final Integer n = value + 1;
-        result.prefixMap.put(exprPrefix, n);
-      }
-    }
-
-    final int incomingSchemaSize = incoming.getSchema().getFieldCount();
-
-    // input is '*' and output is 'prefix_*'
-    if (exprIsStar && refHasPrefix && refEndsWithStar) {
-      final String[] components = ref.getPath().split(StarColumnHelper.PREFIX_DELIMITER, 2);
-      assert(components.length == 2);
-      final String prefix = components[0];
-      result.outputNames = Lists.newArrayList();
-      for (final VectorWrapper<?> wrapper : incoming) {
-        final ValueVector vvIn = wrapper.getValueVector();
-        final String name = vvIn.getField().getName();
-
-        // add the prefix to the incoming column name
-        final String newName = prefix + StarColumnHelper.PREFIX_DELIMITER + name;
-        addToResultMaps(newName, result, false);
-      }
-    }
-    // input and output are the same
-    else if (expr.getPath().equalsIgnoreCase(ref.getPath()) && (!exprContainsStar || exprIsFirstWildcard)) {
-      if (exprContainsStar && exprHasPrefix) {
-        assert exprPrefix != null;
-
-        int k = 0;
-        result.outputNames = Lists.newArrayListWithCapacity(incomingSchemaSize);
-        for (int j=0; j < incomingSchemaSize; j++) {
-          result.outputNames.add(EMPTY_STRING);  // initialize
-        }
-
-        for (final VectorWrapper<?> wrapper : incoming) {
-          final ValueVector vvIn = wrapper.getValueVector();
-          final String incomingName = vvIn.getField().getName();
-          // get the prefix of the name
-          final String[] nameComponents = incomingName.split(StarColumnHelper.PREFIX_DELIMITER, 2);
-          // if incoming valuevector does not have a prefix, ignore it since this expression is not referencing it
-          if (nameComponents.length <= 1) {
-            k++;
-            continue;
-          }
-          final String namePrefix = nameComponents[0];
-          if (exprPrefix.equalsIgnoreCase(namePrefix)) {
-            if (!result.outputMap.containsKey(incomingName)) {
-              result.outputNames.set(k, incomingName);
-              result.outputMap.put(incomingName, incomingName);
-            }
-          }
-          k++;
-        }
-      } else {
-        result.outputNames = Lists.newArrayList();
-        if (exprContainsStar) {
-          for (final VectorWrapper<?> wrapper : incoming) {
-            final ValueVector vvIn = wrapper.getValueVector();
-            final String incomingName = vvIn.getField().getName();
-            if (refContainsStar) {
-              addToResultMaps(incomingName, result, true); // allow dups since this is likely top-level project
-            } else {
-              addToResultMaps(incomingName, result, false);
-            }
-          }
-        } else {
-          final String newName = expr.getPath();
-          if (!refHasPrefix && !exprHasPrefix) {
-            addToResultMaps(newName, result, true); // allow dups since this is likely top-level project
-          } else {
-            addToResultMaps(newName, result, false);
-          }
-        }
-      }
-    }
-
-    // input is wildcard and it is not the first wildcard
-    else if (exprIsStar) {
-      result.outputNames = Lists.newArrayList();
-      for (final VectorWrapper<?> wrapper : incoming) {
-        final ValueVector vvIn = wrapper.getValueVector();
-        final String incomingName = vvIn.getField().getName();
-        addToResultMaps(incomingName, result, true); // allow dups since this is likely top-level project
-      }
-    }
-
-    // only the output has prefix
-    else if (!exprHasPrefix && refHasPrefix) {
-      result.outputNames = Lists.newArrayList();
-      final String newName = ref.getPath();
-      addToResultMaps(newName, result, false);
-    }
-    // input has prefix but output does not
-    else if (exprHasPrefix && !refHasPrefix) {
-      int k = 0;
-      result.outputNames = Lists.newArrayListWithCapacity(incomingSchemaSize);
-      for (int j=0; j < incomingSchemaSize; j++) {
-        result.outputNames.add(EMPTY_STRING);  // initialize
-      }
-
-      for (final VectorWrapper<?> wrapper : incoming) {
-        final ValueVector vvIn = wrapper.getValueVector();
-        final String name = vvIn.getField().getName();
-        final String[] components = name.split(StarColumnHelper.PREFIX_DELIMITER, 2);
-        if (components.length <= 1)  {
-          k++;
-          continue;
-        }
-        final String namePrefix = components[0];
-        final String nameSuffix = components[1];
-        if (exprPrefix.equalsIgnoreCase(namePrefix)) {  // // case insensitive matching of prefix.
-          if (refContainsStar) {
-            // remove the prefix from the incoming column names
-            final String newName = getUniqueName(nameSuffix, result);  // for top level we need to make names unique
-            result.outputNames.set(k, newName);
-          } else if (exprSuffix.equalsIgnoreCase(nameSuffix)) { // case insensitive matching of field name.
-            // example: ref: $f1, expr: T0<PREFIX><column_name>
-            final String newName = ref.getPath();
-            result.outputNames.set(k, newName);
-          }
-        } else {
-          result.outputNames.add(EMPTY_STRING);
-        }
-        k++;
-      }
-    }
-    // input and output have prefixes although they could be different...
-    else if (exprHasPrefix && refHasPrefix) {
-      final String[] input = expr.getPath().split(StarColumnHelper.PREFIX_DELIMITER, 2);
-      assert(input.length == 2);
-      assert false : "Unexpected project expression or reference";  // not handled yet
-    }
-    else {
-      // if the incoming schema's column name matches the expression name of the Project,
-      // then we just want to pick the ref name as the output column name
-
-      result.outputNames = Lists.newArrayList();
-      for (final VectorWrapper<?> wrapper : incoming) {
-        final ValueVector vvIn = wrapper.getValueVector();
-        final String incomingName = vvIn.getField().getName();
-        if (expr.getPath().equalsIgnoreCase(incomingName)) {  // case insensitive matching of field name.
-          final String newName = ref.getPath();
-          addToResultMaps(newName, result, true);
-        }
-      }
-    }
-  }
 
   /**
    * Handle Null input specially when Project operator is for query output. This happens when input return 0 batch
@@ -802,6 +574,8 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
    */
   @Override
   protected IterOutcome handleNullInput() {
+    UNIMPLEMENTED();
+
     if (! popConfig.isOutputProj()) {
       return super.handleNullInput();
     }
@@ -815,7 +589,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
     } catch (SchemaChangeException e) {
       kill(false);
       logger.error("Failure during query", e);
-      context.getExecutorState().fail(e);
+      context.fail(e);
       return IterOutcome.STOP;
     }
 

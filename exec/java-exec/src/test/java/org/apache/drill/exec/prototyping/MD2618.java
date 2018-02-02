@@ -31,8 +31,7 @@ import org.junit.Test;
 
 public class MD2618 extends DrillTest {
 
-    public static final String GENERATED_SOURCES_DIR = "/Users/karthik/git-sources/drill-fork/" +
-                                                       "exec/java-exec/target/generated-sources/";
+    public static final String GENERATED_SOURCES_DIR = "/Users/karthik/drill/generated-code/project";
     @Rule
     public final BaseDirTestWatcher dirTestWatcher = new BaseDirTestWatcher();
 
@@ -42,7 +41,7 @@ public class MD2618 extends DrillTest {
         LogFixture.LogFixtureBuilder logBuilder = LogFixture.builder()
                 .logger("org.apache.drill", Level.TRACE).toConsole();
 
-        try (//LogFixture logs = logBuilder.build();
+        try (LogFixture logs = logBuilder.build();
              ClusterFixture cluster = ClusterFixture.builder(dirTestWatcher)
                                  .configProperty(ClassBuilder.CODE_DIR_OPTION, GENERATED_SOURCES_DIR)
                                  .configProperty(ExecConstants.BIT_RPC_TIMEOUT, 0)
