@@ -17,22 +17,13 @@
  */
 package org.apache.drill.exec.physical.rowSet.impl;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
-import java.util.Arrays;
-
 import org.apache.drill.common.types.TypeProtos.DataMode;
 import org.apache.drill.common.types.TypeProtos.MinorType;
 import org.apache.drill.exec.physical.rowSet.ResultSetLoader;
 import org.apache.drill.exec.physical.rowSet.RowSetLoader;
 import org.apache.drill.exec.record.MaterializedField;
 import org.apache.drill.exec.record.TupleMetadata;
+import org.apache.drill.exec.record.VectorContainer;
 import org.apache.drill.exec.vector.ValueVector;
 import org.apache.drill.exec.vector.accessor.ScalarWriter;
 import org.apache.drill.exec.vector.accessor.TupleWriter.UndefinedColumnException;
@@ -43,6 +34,16 @@ import org.apache.drill.test.rowSet.RowSetComparison;
 import org.apache.drill.test.rowSet.RowSetReader;
 import org.apache.drill.test.rowSet.SchemaBuilder;
 import org.junit.Test;
+
+import java.util.Arrays;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Tests of the overall result set loader protocol focusing on which operations
@@ -70,7 +71,8 @@ public class TestResultSetLoaderProtocol extends SubOperatorTest {
 
   @Test
   public void testBasics() {
-    ResultSetLoaderImpl rsLoaderImpl = new ResultSetLoaderImpl(fixture.allocator());
+    ResultSetLoaderImpl rsLoaderImpl = new ResultSetLoaderImpl(fixture.allocator(),
+            new VectorContainer(fixture.allocator()));
     ResultSetLoader rsLoader = rsLoaderImpl;
     assertEquals(0, rsLoader.schemaVersion());
     assertEquals(ResultSetLoader.DEFAULT_ROW_COUNT, rsLoader.targetRowCount());
@@ -302,7 +304,8 @@ public class TestResultSetLoaderProtocol extends SubOperatorTest {
 
   @Test
   public void testCaseInsensitiveSchema() {
-    ResultSetLoader rsLoader = new ResultSetLoaderImpl(fixture.allocator());
+    ResultSetLoader rsLoader = new ResultSetLoaderImpl(fixture.allocator(),
+            new VectorContainer(fixture.allocator()));
     RowSetLoader rootWriter = rsLoader.writer();
     TupleMetadata schema = rootWriter.schema();
 
@@ -455,7 +458,8 @@ public class TestResultSetLoaderProtocol extends SubOperatorTest {
     ResultSetLoaderImpl.ResultSetOptions options = new OptionBuilder()
         .setSchema(schema)
         .build();
-    ResultSetLoader rsLoader = new ResultSetLoaderImpl(fixture.allocator(), options);
+    ResultSetLoader rsLoader = new ResultSetLoaderImpl(fixture.allocator(), options,
+            new VectorContainer(fixture.allocator()));
     RowSetLoader rootWriter = rsLoader.writer();
 
     rsLoader.startBatch();
@@ -510,7 +514,8 @@ public class TestResultSetLoaderProtocol extends SubOperatorTest {
         .setSchema(schema)
         .setRowCountLimit(ValueVector.MAX_ROW_COUNT)
         .build();
-    ResultSetLoader rsLoader = new ResultSetLoaderImpl(fixture.allocator(), options);
+    ResultSetLoader rsLoader = new ResultSetLoaderImpl(fixture.allocator(), options,
+            new VectorContainer(fixture.allocator()));
     RowSetLoader rootWriter = rsLoader.writer();
 
     // Can't use the shortcut to populate rows when doing overwrites.
@@ -567,7 +572,8 @@ public class TestResultSetLoaderProtocol extends SubOperatorTest {
         .setSchema(schema)
         .setRowCountLimit(ValueVector.MAX_ROW_COUNT)
         .build();
-    ResultSetLoader rsLoader = new ResultSetLoaderImpl(fixture.allocator(), options);
+    ResultSetLoader rsLoader = new ResultSetLoaderImpl(fixture.allocator(), options,
+            new VectorContainer(fixture.allocator()));
     RowSetLoader rootWriter = rsLoader.writer();
 
     rsLoader.startBatch();

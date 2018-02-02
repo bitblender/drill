@@ -271,9 +271,16 @@ public class ResultSetLoaderImpl implements ResultSetLoader {
 
   protected int accumulatedBatchSize;
 
+  /**
+   * Externally provided container for harvesting
+   */
+
+  protected VectorContainer externalContainer;
+
   protected final ProjectionSet projectionSet;
 
-  public ResultSetLoaderImpl(BufferAllocator allocator, ResultSetOptions options) {
+  public ResultSetLoaderImpl(BufferAllocator allocator, ResultSetOptions options,
+                             VectorContainer externalContainer) {
     this.allocator = allocator;
     this.options = options;
     targetRowCount = options.rowCountLimit;
@@ -306,14 +313,23 @@ public class ResultSetLoaderImpl implements ResultSetLoader {
       logger.debug("Schema: " + options.schema.toString());
       rootState.buildSchema(options.schema);
     }
+    this.externalContainer = externalContainer;
   }
 
   private void updateCardinality() {
     rootState.updateCardinality(targetRowCount());
   }
 
+  public ResultSetLoaderImpl(BufferAllocator allocator, ResultSetOptions options) {
+    this(allocator, options, null);
+  }
+
   public ResultSetLoaderImpl(BufferAllocator allocator) {
     this(allocator, new ResultSetOptions());
+  }
+
+  public ResultSetLoaderImpl(BufferAllocator allocator, VectorContainer externalContainer) {
+    this(allocator, new ResultSetOptions(), externalContainer);
   }
 
   public BufferAllocator allocator() { return allocator; }
