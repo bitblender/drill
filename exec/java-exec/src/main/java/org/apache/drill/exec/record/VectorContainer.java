@@ -17,11 +17,9 @@
  */
 package org.apache.drill.exec.record;
 
-import java.lang.reflect.Array;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Set;
-
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.apache.drill.common.expression.SchemaPath;
 import org.apache.drill.common.types.TypeProtos.MajorType;
 import org.apache.drill.exec.expr.TypeHelper;
@@ -33,9 +31,10 @@ import org.apache.drill.exec.record.selection.SelectionVector4;
 import org.apache.drill.exec.vector.SchemaChangeCallBack;
 import org.apache.drill.exec.vector.ValueVector;
 
-import com.google.common.base.Preconditions;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
+import java.lang.reflect.Array;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
 
 public class VectorContainer implements VectorAccessible {
 
@@ -422,7 +421,30 @@ public class VectorContainer implements VectorAccessible {
     return merged;
   }
 
-  /**
+  boolean hasField(final MaterializedField field) {
+    final TypedFieldId id = getValueVectorId(SchemaPath.getSimplePath(field.getName()));
+    return id != null;
+  }
+
+  // this UNION otherContainer
+  // KM_TBD: Do this efficiently
+  public VectorContainer union(VectorContainer otherContainer) {
+    if (recordCount != otherContainer.recordCount ||
+            this.schema.getSelectionVectorMode() != this.schema.getSelectionVectorMode()) {
+      throw new IllegalArgumentException();
+    }
+    VectorContainer newInOtherContainer = new VectorContainer(allocator);
+    newInOtherContainer.recordCount = recordCount;
+    for (VectorWrapper w : otherContainer.wrappers) {
+      if(!this.hasField(w.getField())) {
+       newInOtherContainer.wrappers.add(w);
+      }
+    }
+    newInOtherContainer.buildSchema(this.schema.getSelectionVectorMode());
+    return merge(newInOtherContainer);
+  }
+
+   /**
    * Exchange buffers between two identical vector containers.
    * The schemas must be identical in both column schemas and
    * order. That is, after this call, data is exchanged between

@@ -1,9 +1,27 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.drill.exec.physical.impl.project;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.commons.collections.map.CaseInsensitiveMap;
-import org.apache.drill.common.expression.PathSegment;
+import org.apache.drill.common.expression.PathSegment.NameSegment;
 import org.apache.drill.common.expression.SchemaPath;
 import org.apache.drill.common.logical.data.NamedExpression;
 import org.apache.drill.exec.planner.StarColumnHelper;
@@ -79,14 +97,14 @@ public class ExpressionClassifier {
 
 
     public static void classifyExpr(final NamedExpression ex, final RecordBatch incoming, final ClassifierResult result)  {
-        final PathSegment.NameSegment expr = ((SchemaPath)ex.getExpr()).getRootSegment();
-        final PathSegment.NameSegment ref = ex.getRef().getRootSegment();
+        final NameSegment expr = ((SchemaPath)ex.getExpr()).getRootSegment();
+        final NameSegment ref = ex.getRef().getRootSegment();
         final boolean exprHasPrefix = expr.getPath().contains(StarColumnHelper.PREFIX_DELIMITER);
         final boolean refHasPrefix = ref.getPath().contains(StarColumnHelper.PREFIX_DELIMITER);
-        final boolean exprIsStar = expr.getPath().equals(StarColumnHelper.STAR_COLUMN);
-        final boolean refContainsStar = ref.getPath().contains(StarColumnHelper.STAR_COLUMN);
-        final boolean exprContainsStar = expr.getPath().contains(StarColumnHelper.STAR_COLUMN);
-        final boolean refEndsWithStar = ref.getPath().endsWith(StarColumnHelper.STAR_COLUMN);
+        final boolean exprIsStar = expr.getPath().equals(SchemaPath.WILDCARD);
+        final boolean refContainsStar = ref.getPath().contains(SchemaPath.WILDCARD);
+        final boolean exprContainsStar = expr.getPath().contains(SchemaPath.WILDCARD);
+        final boolean refEndsWithStar = ref.getPath().endsWith(SchemaPath.WILDCARD);
 
         String exprPrefix = EMPTY_STRING;
         String exprSuffix = expr.getPath();
@@ -255,5 +273,6 @@ public class ExpressionClassifier {
             }
         }
     }
+
 
 }

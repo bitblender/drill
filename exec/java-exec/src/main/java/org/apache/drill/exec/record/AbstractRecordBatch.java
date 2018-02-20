@@ -17,8 +17,6 @@
  */
 package org.apache.drill.exec.record;
 
-import java.util.Iterator;
-
 import org.apache.drill.common.exceptions.DrillRuntimeException;
 import org.apache.drill.common.exceptions.UserException;
 import org.apache.drill.common.expression.SchemaPath;
@@ -33,10 +31,12 @@ import org.apache.drill.exec.record.selection.SelectionVector2;
 import org.apache.drill.exec.record.selection.SelectionVector4;
 import org.apache.drill.exec.server.options.OptionValue;
 
+import java.util.Iterator;
+
 public abstract class AbstractRecordBatch<T extends PhysicalOperator> implements CloseableRecordBatch {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(new Object() {}.getClass().getEnclosingClass());
 
-  protected final VectorContainer container;
+  protected VectorContainer container;
   protected final T popConfig;
   protected final FragmentContext context;
   protected final OperatorContext oContext;

@@ -46,6 +46,7 @@ import org.apache.drill.exec.expr.ValueVectorReadExpression;
 import org.apache.drill.exec.expr.ValueVectorWriteExpression;
 import org.apache.drill.exec.ops.FragmentContext;
 import org.apache.drill.exec.physical.config.Project;
+import org.apache.drill.exec.physical.rowSet.RowSetLoader;
 import org.apache.drill.exec.physical.rowSet.impl.ResultSetLoaderImpl;
 import org.apache.drill.exec.planner.StarColumnHelper;
 import org.apache.drill.exec.record.AbstractSingleRecordBatch;
@@ -59,7 +60,6 @@ import org.apache.drill.exec.record.VectorContainer;
 import org.apache.drill.exec.record.VectorWrapper;
 import org.apache.drill.exec.store.ColumnExplorer;
 import org.apache.drill.exec.vector.AllocationHelper;
-import org.apache.drill.exec.vector.FixedWidthVector;
 import org.apache.drill.exec.vector.UntypedNullHolder;
 import org.apache.drill.exec.vector.UntypedNullVector;
 import org.apache.drill.exec.vector.ValueVector;
@@ -79,19 +79,18 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
 
   private ResultSetLoaderImpl rsLoader;
 
+  public static int codeGenCountHack = 0;
 
   private boolean first = true;
   private boolean wasNone = false; // whether a NONE iter outcome was already seen
-  public static int codeGenCountHack = 0;
 
-
-  public void UNIMPLEMENTED() {
+  public static void UNIMPLEMENTED() {
     throw new RuntimeException("Unimplemented");
   }
 
   public ProjectRecordBatch2(final Project pop, final RecordBatch incoming, final FragmentContext context) throws OutOfMemoryException {
     super(pop, context, incoming);
-
+    rsLoader = new ResultSetLoaderImpl(container.getAllocator());
   }
 
   @Override
@@ -99,6 +98,14 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
     return recordCount;
   }
 
+  @Override
+  public VectorContainer getOutgoingContainer() {
+    return this.container;
+  }
+
+  public void setOutgoingContainer(VectorContainer container) {
+    this.container = container;
+  }
 
   @Override
   protected void killIncoming(final boolean sendUpstream) {
@@ -120,11 +127,6 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
   }
 
   @Override
-  public VectorContainer getOutgoingContainer() {
-    return this.container;
-  }
-
-  @Override
   protected IterOutcome doWork() {
     if (wasNone) {
       return IterOutcome.NONE;
@@ -134,6 +136,7 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
 
     if (first && incomingRecordCount == 0) {
       if (complexWriters != null) {
+        UNIMPLEMENTED();
         IterOutcome next = null;
         while (incomingRecordCount == 0) {
           next = next(incoming);
@@ -175,12 +178,12 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
 
     container.zeroVectors();
 
-    if (!doAlloc(incomingRecordCount)) {
-      outOfMemory = true;
-      return IterOutcome.OUT_OF_MEMORY;
-    }
+    //if (!doAlloc(incomingRecordCount)) {
+    //  outOfMemory = true;
+    //  return IterOutcome.OUT_OF_MEMORY;
+    //}
 
-    final int outputRecords = projector.projectRecords(0, incomingRecordCount, 0);
+    final int outputRecords = projector.projectRecords2(0, incomingRecordCount, rsLoader, this);
     if (outputRecords < incomingRecordCount) {
       setValueCount(outputRecords);
       hasRemainder = true;
@@ -204,11 +207,11 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
 
   private void handleRemainder() {
     final int remainingRecordCount = incoming.getRecordCount() - remainderIndex;
-    if (!doAlloc(remainingRecordCount)) {
-      outOfMemory = true;
-      return;
-    }
-    final int projRecords = projector.projectRecords(remainderIndex, remainingRecordCount, 0);
+    //if (!doAlloc(remainingRecordCount)) {
+    //  outOfMemory = true;
+    // return;
+    //}
+    final int projRecords = projector.projectRecords2(remainderIndex, remainingRecordCount, rsLoader, this);
     if (projRecords < remainingRecordCount) {
       setValueCount(projRecords);
       this.recordCount = projRecords;
@@ -248,10 +251,10 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
   }
 
   private void setValueCount(final int count) {
-    for (final ValueVector v : allocationVectors) {
-      final ValueVector.Mutator m = v.getMutator();
-      m.setValueCount(count);
-    }
+    //for (final ValueVector v : allocationVectors) {
+    //  final ValueVector.Mutator m = v.getMutator();
+    //  m.setValueCount(count);
+    //}
 
     if (complexWriters == null) {
       return;
@@ -281,21 +284,24 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
       return false;
     }
     final NameSegment expr = ((SchemaPath)ex.getExpr()).getRootSegment();
-    return expr.getPath().contains(StarColumnHelper.STAR_COLUMN);
+    return expr.getPath().contains(SchemaPath.WILDCARD);
   }
 
   private void setupNewSchemaFromInput(RecordBatch incomingBatch) throws SchemaChangeException {
-    if (allocationVectors != null) {
-      for (final ValueVector v : allocationVectors) {
-        v.clear();
-      }
-    }
-    this.allocationVectors = Lists.newArrayList();
+    //if (allocationVectors != null) {
+    //  for (final ValueVector v : allocationVectors) {
+    //    v.clear();
+    //  }
+    //}
+    //this.allocationVectors = Lists.newArrayList();
+
     if (complexWriters != null) {
+      UNIMPLEMENTED();
       container.clear();
     } else {
       container.zeroVectors();
     }
+
     final List<NamedExpression> exprs = getExpressionList();
     final ErrorCollector collector = new ErrorCollectorImpl();
     final List<TransferPair> transfers = Lists.newArrayList();
@@ -311,6 +317,7 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
 
     final ExpressionClassifier.ClassifierResult result = new ExpressionClassifier.ClassifierResult();
     final boolean classify = isClassificationNeeded(exprs);
+    RowSetLoader rootWriter = rsLoader.writer();
 
     for (NamedExpression namedExpression : exprs) {
       result.clear();
@@ -319,59 +326,7 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
         ExpressionClassifier.classifyExpr(namedExpression, incomingBatch, result);
 
         if (result.isStar) {
-          // The value indicates which wildcard we are processing now
-          final Integer value = result.prefixMap.get(result.prefix);
-          if (value != null && value == 1) {
-            int k = 0;
-            for (final VectorWrapper<?> wrapper : incomingBatch) {
-              final ValueVector vvIn = wrapper.getValueVector();
-              if (k > result.outputNames.size() - 1) {
-                assert false;
-              }
-              final String name = result.outputNames.get(k++);  // get the renamed column names
-              if (name.isEmpty()) {
-                continue;
-              }
-
-              if (isImplicitFileColumn(vvIn)) {
-                continue;
-              }
-
-              final FieldReference ref = new FieldReference(name);
-              final ValueVector vvOut = container.addOrGet(MaterializedField.create(ref.getAsNamePart().getName(), vvIn.getField().getType()), callBack);
-              final TransferPair tp = vvIn.makeTransferPair(vvOut);
-              transfers.add(tp);
-            }
-          } else if (value != null && value > 1) { // subsequent wildcards should do a copy of incoming valuevectors
-            int k = 0;
-            for (final VectorWrapper<?> wrapper : incomingBatch) {
-              final ValueVector vvIn = wrapper.getValueVector();
-              final SchemaPath originalPath = SchemaPath.getSimplePath(vvIn.getField().getName());
-              if (k > result.outputNames.size() - 1) {
-                assert false;
-              }
-              final String name = result.outputNames.get(k++);  // get the renamed column names
-              if (name.isEmpty()) {
-                continue;
-              }
-
-              if (isImplicitFileColumn(vvIn)) {
-                continue;
-              }
-
-              final LogicalExpression expr = ExpressionTreeMaterializer.materialize(originalPath, incomingBatch, collector, context.getFunctionRegistry() );
-              if (collector.hasErrors()) {
-                throw new SchemaChangeException(String.format("Failure while trying to materialize incomingBatch schema.  Errors:\n %s.", collector.toErrorString()));
-              }
-
-              final MaterializedField outputField = MaterializedField.create(name, expr.getMajorType());
-              final ValueVector vv = container.addOrGet(outputField, callBack);
-              allocationVectors.add(vv);
-              final TypedFieldId fid = container.getValueVectorId(SchemaPath.getSimplePath(outputField.getName()));
-              final ValueVectorWriteExpression write = new ValueVectorWriteExpression(fid, expr, true);
-              final HoldingContainer hc = cg.addExpr(write, ClassGenerator.BlkCreateMode.TRUE_IF_BOUND);
-            }
-          }
+          handleWildCards(incomingBatch, collector, transfers, cg, result);
           continue;
         }
       } else {
@@ -401,6 +356,8 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
       final LogicalExpression expr = ExpressionTreeMaterializer.materialize(namedExpression.getExpr(), incomingBatch,
           collector, context.getFunctionRegistry(), true, unionTypeEnabled);
       final MaterializedField outputField = MaterializedField.create(outputName, expr.getMajorType());
+
+      //KM_TBD: is the following sufficient ?
       if (collector.hasErrors()) {
         throw new SchemaChangeException(String.format("Failure while trying to materialize incoming schema.  Errors:\n %s.", collector.toErrorString()));
       }
@@ -445,20 +402,26 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
         complexFieldReferencesList.add(namedExpression.getRef());
       } else {
         // need to do evaluation.
-        final ValueVector vector = container.addOrGet(outputField, callBack);
-        allocationVectors.add(vector);
-        final TypedFieldId fid = container.getValueVectorId(SchemaPath.getSimplePath(outputField.getName()));
-        final boolean useSetSafe = !(vector instanceof FixedWidthVector);
-        final ValueVectorWriteExpression write = new ValueVectorWriteExpression(fid, expr, useSetSafe);
-        final HoldingContainer hc = cg.addExpr(write, ClassGenerator.BlkCreateMode.TRUE_IF_BOUND);
+        //KM_TBD: SchemaChangeCallback
+        //final ValueVector vector = container.addOrGet(outputField, callBack);
+        //allocationVectors.add(vector);
+        rootWriter.addColumn(outputField);
+
+        //KM_TBD: Revisit when doing codegen changes
+        //final TypedFieldId fid = container.getValueVectorId(SchemaPath.getSimplePath(outputField.getName()));
+        //final boolean useSetSafe = !(vector instanceof FixedWidthVector);
+        //final ValueVectorWriteExpression write = new ValueVectorWriteExpression(fid, expr, useSetSafe);
+        //cg.addExpr(write, ClassGenerator.BlkCreateMode.TRUE_IF_BOUND);
 
         // We cannot do multiple transfers from the same vector. However we still need to instantiate the output vector.
         if (expr instanceof ValueVectorReadExpression) {
+          UNIMPLEMENTED();
           final ValueVectorReadExpression vectorRead = (ValueVectorReadExpression) expr;
           if (!vectorRead.hasReadPath()) {
             final TypedFieldId id = vectorRead.getFieldId();
             final ValueVector vvIn = incomingBatch.getValueAccessorById(id.getIntermediateClass(), id.getFieldIds()).getValueVector();
-            vvIn.makeTransferPair(vector);
+
+            //vvIn.makeTransferPair(vector);
           }
         }
         logger.debug("Added eval for project expression.");
@@ -486,6 +449,62 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
       } catch (Exception e) {
         throw new IllegalStateException(e);
       }
+  }
+
+  private void handleWildCards(RecordBatch incomingBatch, ErrorCollector collector, List<TransferPair> transfers, ClassGenerator<Projector> cg, ExpressionClassifier.ClassifierResult result) throws SchemaChangeException {
+    // The value indicates which wildcard we are processing now
+    final Integer value = result.prefixMap.get(result.prefix);
+    if (value != null && value == 1) {
+      int k = 0;
+      for (final VectorWrapper<?> wrapper : incomingBatch) {
+        final ValueVector vvIn = wrapper.getValueVector();
+        if (k > result.outputNames.size() - 1) {
+          assert false;
+        }
+        final String name = result.outputNames.get(k++);  // get the renamed column names
+        if (name.isEmpty()) {
+          continue;
+        }
+
+        if (isImplicitFileColumn(vvIn)) {
+          continue;
+        }
+
+        final FieldReference ref = new FieldReference(name);
+        final ValueVector vvOut = container.addOrGet(MaterializedField.create(ref.getAsNamePart().getName(), vvIn.getField().getType()), callBack);
+        final TransferPair tp = vvIn.makeTransferPair(vvOut);
+        transfers.add(tp);
+      }
+    } else if (value != null && value > 1) { // subsequent wildcards should do a copy of incoming valuevectors
+      int k = 0;
+      for (final VectorWrapper<?> wrapper : incomingBatch) {
+        final ValueVector vvIn = wrapper.getValueVector();
+        final SchemaPath originalPath = SchemaPath.getSimplePath(vvIn.getField().getName());
+        if (k > result.outputNames.size() - 1) {
+          assert false;
+        }
+        final String name = result.outputNames.get(k++);  // get the renamed column names
+        if (name.isEmpty()) {
+          continue;
+        }
+
+        if (isImplicitFileColumn(vvIn)) {
+          continue;
+        }
+
+        final LogicalExpression expr = ExpressionTreeMaterializer.materialize(originalPath, incomingBatch, collector, context.getFunctionRegistry() );
+        if (collector.hasErrors()) {
+          throw new SchemaChangeException(String.format("Failure while trying to materialize incomingBatch schema.  Errors:\n %s.", collector.toErrorString()));
+        }
+
+        final MaterializedField outputField = MaterializedField.create(name, expr.getMajorType());
+        final ValueVector vv = container.addOrGet(outputField, callBack);
+        allocationVectors.add(vv);
+        final TypedFieldId fid = container.getValueVectorId(SchemaPath.getSimplePath(outputField.getName()));
+        final ValueVectorWriteExpression write = new ValueVectorWriteExpression(fid, expr, true);
+        final HoldingContainer hc = cg.addExpr(write, ClassGenerator.BlkCreateMode.TRUE_IF_BOUND);
+      }
+    }
   }
 
 
@@ -538,7 +557,7 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
       final NameSegment expr = ((SchemaPath) ex.getExpr()).getRootSegment();
       final NameSegment ref = ex.getRef().getRootSegment();
       final boolean refHasPrefix = ref.getPath().contains(StarColumnHelper.PREFIX_DELIMITER);
-      final boolean exprContainsStar = expr.getPath().contains(StarColumnHelper.STAR_COLUMN);
+      final boolean exprContainsStar = expr.getPath().contains(SchemaPath.WILDCARD);
 
       if (refHasPrefix || exprContainsStar) {
         needed = true;
@@ -547,10 +566,6 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
     }
     return needed;
   }
-
-
-
-
 
   /**
    * Handle Null input specially when Project operator is for query output. This happens when input return 0 batch
@@ -574,8 +589,6 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
    */
   @Override
   protected IterOutcome handleNullInput() {
-    UNIMPLEMENTED();
-
     if (! popConfig.isOutputProj()) {
       return super.handleNullInput();
     }
@@ -589,7 +602,7 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
     } catch (SchemaChangeException e) {
       kill(false);
       logger.error("Failure during query", e);
-      context.fail(e);
+      context.getExecutorState().fail(e);
       return IterOutcome.STOP;
     }
 
@@ -600,3 +613,4 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
   }
 
 }
+
