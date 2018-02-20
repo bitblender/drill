@@ -17,21 +17,22 @@
  */
 package org.apache.drill.exec.physical.impl.project;
 
-import java.util.List;
-
+import com.google.common.base.Preconditions;
 import org.apache.drill.common.exceptions.ExecutionSetupException;
 import org.apache.drill.exec.ops.ExecutorFragmentContext;
 import org.apache.drill.exec.physical.config.Project;
 import org.apache.drill.exec.physical.impl.BatchCreator;
 import org.apache.drill.exec.record.RecordBatch;
 
-import com.google.common.base.Preconditions;
+import java.util.List;
 
-public class ProjectBatchCreator implements BatchCreator<Project>{
+public class ProjectBatchCreator implements BatchCreator<Project> {
+  static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ProjectBatchCreator.class);
+
   @Override
-  public ProjectRecordBatch getBatch(ExecutorFragmentContext context, Project config, List<RecordBatch> children)
+  public ProjectRecordBatch2 getBatch(ExecutorFragmentContext context, Project config, List<RecordBatch> children)
       throws ExecutionSetupException {
     Preconditions.checkArgument(children.size() == 1);
-    return new ProjectRecordBatch(config, children.iterator().next(), context);
+    return new ProjectRecordBatch2(config, children.iterator().next(), context);
   }
 }

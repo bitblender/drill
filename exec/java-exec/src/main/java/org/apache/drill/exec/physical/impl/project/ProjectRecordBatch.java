@@ -37,6 +37,7 @@ import org.apache.drill.common.expression.fn.CastFunctions;
 import org.apache.drill.common.logical.data.NamedExpression;
 import org.apache.drill.common.types.TypeProtos.MinorType;
 import org.apache.drill.common.types.Types;
+import org.apache.drill.exec.exception.ClassTransformationException;
 import org.apache.drill.exec.exception.OutOfMemoryException;
 import org.apache.drill.exec.exception.SchemaChangeException;
 import org.apache.drill.exec.expr.ClassGenerator;
@@ -66,6 +67,7 @@ import org.apache.drill.exec.vector.UntypedNullVector;
 import org.apache.drill.exec.vector.ValueVector;
 import org.apache.drill.exec.vector.complex.writer.BaseWriter.ComplexWriter;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 
@@ -76,13 +78,12 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
   private List<ComplexWriter> complexWriters;
   private List<FieldReference> complexFieldReferencesList;
   private boolean hasRemainder = false;
-  private int remainderIndex = 0;
+  private int remainderIndex = -1;
   private int recordCount;
 
   private static final String EMPTY_STRING = "";
   private boolean first = true;
   private boolean wasNone = false; // whether a NONE iter outcome was already seen
-  public static int codeGenCountHack = 0;
 
   private class ClassifierResult {
     public boolean isStar = false;
@@ -486,21 +487,10 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
       // Uncomment out this line to debug the generated code.
       // codeGen.saveCodeForDebugging(true);
       this.projector = context.getImplementationClass(codeGen);
-//    } catch (ClassTransformationException | IOException e) {
-//      throw new SchemaChangeException("Failure while attempting to load generated class", e);
-//    }
-
-      if (codeGenCountHack == 0) {
-        codeGenCountHack++;
-        this.projector = new org.apache.drill.exec.test.generated.KMProjectorGen0();
-      } else if (codeGenCountHack == 1) {
-        this.projector = new  org.apache.drill.exec.test.generated.KMProjectorGen2();
-      }
       projector.setup(context, incomingBatch, this, transfers);
-
-      } catch (Exception e) {
-        throw new IllegalStateException(e);
-      }
+    } catch (ClassTransformationException | IOException e) {
+      throw new SchemaChangeException("Failure while attempting to load generated class", e);
+    }
   }
 
 

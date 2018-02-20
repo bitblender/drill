@@ -17,19 +17,20 @@
  */
 package org.apache.drill.exec.physical.impl.project;
 
-import java.util.List;
-
-import javax.inject.Named;
-
+import com.google.common.collect.ImmutableList;
 import org.apache.drill.exec.exception.SchemaChangeException;
 import org.apache.drill.exec.ops.FragmentContext;
+import org.apache.drill.exec.physical.rowSet.ResultSetLoader;
+import org.apache.drill.exec.physical.rowSet.RowSetLoader;
 import org.apache.drill.exec.record.BatchSchema.SelectionVectorMode;
 import org.apache.drill.exec.record.RecordBatch;
 import org.apache.drill.exec.record.TransferPair;
+import org.apache.drill.exec.record.VectorContainer;
 import org.apache.drill.exec.record.selection.SelectionVector2;
 import org.apache.drill.exec.record.selection.SelectionVector4;
 
-import com.google.common.collect.ImmutableList;
+import javax.inject.Named;
+import java.util.List;
 
 public abstract class ProjectorTemplate implements Projector {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ProjectorTemplate.class);
@@ -85,6 +86,64 @@ public abstract class ProjectorTemplate implements Projector {
     }
   }
 
+
+  public final int projectRecords2(int startIndex, final int recordCount,
+                                   ResultSetLoader rsLoader, ProjectRecordBatch2 batch) {
+    switch (svMode) {
+      case FOUR_BYTE:
+        throw new UnsupportedOperationException();
+
+      case TWO_BYTE:
+
+        ProjectRecordBatch2.UNIMPLEMENTED();
+        return recordCount;
+
+      case NONE:
+        rsLoader.setTargetRowCount(1000); // set a dummy limit
+        rsLoader.startBatch();
+        RowSetLoader rootWriter = rsLoader.writer();
+        VectorContainer allocedColumsContainer = null;
+        int index;
+        for (index = startIndex; index < startIndex + recordCount; index++) {
+          try {
+            if (rootWriter.isFull()) {
+              break;
+            } else {
+              // Equivalent of generated code
+              rootWriter.start();
+              doEval(index, rsLoader);
+              rootWriter.save();
+            }
+          } catch (SchemaChangeException e) {
+            throw new UnsupportedOperationException(e);
+          }
+        }
+        allocedColumsContainer = rsLoader.harvest();
+        assert index >= startIndex;
+        final int rowsProcessed = index - startIndex;
+        assert rowsProcessed <= recordCount;
+        // transfers need a split
+        for (TransferPair t : transfers) {
+          if (rowsProcessed < recordCount || startIndex > 0) {
+            t.splitAndTransfer(startIndex, rowsProcessed);
+          } else {
+            t.transfer();
+          }
+        }
+        //merge of alloced and transferred rows
+
+        final VectorContainer outgoingContainer = batch.getOutgoingContainer();
+        //KM_TBD: Hack: outgoingContainer only has transfer pairs. set record count to match the alloced columns
+        outgoingContainer.setRecordCount(allocedColumsContainer.getRecordCount());
+        final VectorContainer mergedContainer = outgoingContainer.union(allocedColumsContainer);
+        batch.setOutgoingContainer(mergedContainer);
+        assert rowsProcessed <= recordCount;
+        return rowsProcessed;
+      default:
+        throw new UnsupportedOperationException();
+    }
+  }
+
   @Override
   public final void setup(FragmentContext context, RecordBatch incoming, RecordBatch outgoing, List<TransferPair> transfers)  throws SchemaChangeException{
 
@@ -100,6 +159,10 @@ public abstract class ProjectorTemplate implements Projector {
     this.transfers = ImmutableList.copyOf(transfers);
     doSetup(context, incoming, outgoing);
   }
+
+  public void doEval(int inIndex, ResultSetLoader rsLoader)
+          throws SchemaChangeException { }
+
 
   public abstract void doSetup(@Named("context") FragmentContext context,
                                @Named("incoming") RecordBatch incoming,
