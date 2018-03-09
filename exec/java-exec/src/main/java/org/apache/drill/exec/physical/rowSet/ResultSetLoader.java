@@ -201,4 +201,6 @@ public interface ResultSetLoader {
    */
 
   void close();
+
+  void setExternalColumnSizer(ExternalColumnSizer externalColumnSizer);
 }

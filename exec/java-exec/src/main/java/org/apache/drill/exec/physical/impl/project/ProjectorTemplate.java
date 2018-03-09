@@ -22,6 +22,7 @@ import org.apache.drill.exec.exception.SchemaChangeException;
 import org.apache.drill.exec.ops.FragmentContext;
 import org.apache.drill.exec.physical.rowSet.ResultSetLoader;
 import org.apache.drill.exec.physical.rowSet.RowSetLoader;
+import org.apache.drill.exec.physical.rowSet.impl.ExternalColumnSizerImpl;
 import org.apache.drill.exec.record.BatchSchema.SelectionVectorMode;
 import org.apache.drill.exec.record.RecordBatch;
 import org.apache.drill.exec.record.TransferPair;
@@ -99,9 +100,11 @@ public abstract class ProjectorTemplate implements Projector {
         return recordCount;
 
       case NONE:
-        rsLoader.setTargetRowCount(1000); // set a dummy limit
+        rsLoader.setTargetRowCount(100); // set a dummy limit
         rsLoader.startBatch();
         RowSetLoader rootWriter = rsLoader.writer();
+        final ExternalColumnSizerImpl externalColumnSizer = new ExternalColumnSizerImpl(batch.getOutgoingContainer());
+        rsLoader.setExternalColumnSizer(externalColumnSizer);
         VectorContainer allocedColumsContainer = null;
         int index;
         for (index = startIndex; index < startIndex + recordCount; index++) {

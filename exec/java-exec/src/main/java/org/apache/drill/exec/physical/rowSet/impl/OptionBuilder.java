@@ -17,14 +17,15 @@
  */
 package org.apache.drill.exec.physical.rowSet.impl;
 
-import java.util.Collection;
-
 import org.apache.drill.common.expression.SchemaPath;
+import org.apache.drill.exec.physical.rowSet.ExternalColumnSizer;
 import org.apache.drill.exec.physical.rowSet.ResultVectorCache;
 import org.apache.drill.exec.physical.rowSet.impl.ResultSetLoaderImpl.ResultSetOptions;
 import org.apache.drill.exec.record.metadata.TupleMetadata;
 import org.apache.drill.exec.vector.BaseValueVector;
 import org.apache.drill.exec.vector.ValueVector;
+
+import java.util.Collection;
 
 /**
  * Builder for the options for the row set loader. Reasonable defaults
@@ -39,6 +40,7 @@ public class OptionBuilder {
   protected ResultVectorCache vectorCache;
   protected TupleMetadata schema;
   protected long maxBatchSize;
+  protected ExternalColumnSizer externalColumnSizer;
 
   public OptionBuilder() {
     ResultSetOptions options = new ResultSetOptions();
@@ -46,6 +48,12 @@ public class OptionBuilder {
     rowCountLimit = options.rowCountLimit;
     maxBatchSize = options.maxBatchSize;
   }
+
+  public OptionBuilder setExternalColumnSizer(ExternalColumnSizer externalColumnSizer) {
+    this.externalColumnSizer = externalColumnSizer;
+    return this;
+  }
+
 
   /**
    * Specify the maximum number of rows per batch. Defaults to

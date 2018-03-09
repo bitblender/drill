@@ -17,11 +17,10 @@
  */
 package org.apache.drill.exec.physical.rowSet.impl;
 
-import java.util.Collection;
-
 import org.apache.drill.common.exceptions.UserException;
 import org.apache.drill.common.expression.SchemaPath;
 import org.apache.drill.exec.memory.BufferAllocator;
+import org.apache.drill.exec.physical.rowSet.ExternalColumnSizer;
 import org.apache.drill.exec.physical.rowSet.ResultSetLoader;
 import org.apache.drill.exec.physical.rowSet.ResultVectorCache;
 import org.apache.drill.exec.physical.rowSet.RowSetLoader;
@@ -30,6 +29,8 @@ import org.apache.drill.exec.record.VectorContainer;
 import org.apache.drill.exec.record.metadata.TupleMetadata;
 import org.apache.drill.exec.vector.ValueVector;
 import org.apache.drill.exec.vector.accessor.impl.HierarchicalFormatter;
+
+import java.util.Collection;
 
 /**
  * Implementation of the result set loader.
@@ -193,7 +194,7 @@ public class ResultSetLoaderImpl implements ResultSetLoader {
 
   /**
    * Vector cache for this loader.
-   * @see {@link OptionBuilder#setVectorCache()}.
+   * @see {@link OptionBuilder#setVectorCache}.
    */
 
   private final ResultVectorCache vectorCache;
@@ -277,7 +278,10 @@ public class ResultSetLoaderImpl implements ResultSetLoader {
 
   protected VectorContainer externalContainer;
 
+  protected ExternalColumnSizer externalColumnSizer;
+
   protected final ProjectionSet projectionSet;
+
 
   public ResultSetLoaderImpl(BufferAllocator allocator, ResultSetOptions options,
                              VectorContainer externalContainer) {
@@ -705,6 +709,11 @@ public class ResultSetLoaderImpl implements ResultSetLoader {
   }
 
   @Override
+  public void setExternalColumnSizer(ExternalColumnSizer externalColumnSizer) {
+    this.externalColumnSizer = externalColumnSizer;
+  }
+
+  @Override
   public int batchCount() {
     return harvestBatchCount + (rowCount() == 0 ? 0 : 1);
   }
@@ -731,7 +740,10 @@ public class ResultSetLoaderImpl implements ResultSetLoader {
    */
 
   public boolean canExpand(int delta) {
+    int externalBatchSize = (externalColumnSizer != null) ?
+            rowCount() * externalColumnSizer.getAverageExternalRowSize() : 0;
     accumulatedBatchSize += delta;
+    accumulatedBatchSize += externalBatchSize;
     return state == State.IN_OVERFLOW ||
            options.maxBatchSize <= 0 ||
            accumulatedBatchSize <= options.maxBatchSize;

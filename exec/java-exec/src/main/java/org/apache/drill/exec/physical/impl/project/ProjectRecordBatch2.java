@@ -440,9 +440,9 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
 
       if (codeGenCountHack == 0) {
         codeGenCountHack++;
-        this.projector = new org.apache.drill.exec.test.generated.KMProjectorGen0();
+//        this.projector = new org.apache.drill.exec.test.generated.KMProjectorGen0();
       } else if (codeGenCountHack == 1) {
-        this.projector = new  org.apache.drill.exec.test.generated.KMProjectorGen2();
+//        this.projector = new  org.apache.drill.exec.test.generated.KMProjectorGen2();
       }
       projector.setup(context, incomingBatch, this, transfers);
 
