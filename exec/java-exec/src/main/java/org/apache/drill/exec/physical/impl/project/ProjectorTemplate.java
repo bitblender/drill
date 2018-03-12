@@ -100,9 +100,12 @@ public abstract class ProjectorTemplate implements Projector {
         return recordCount;
 
       case NONE:
-        rsLoader.setTargetRowCount(100); // set a dummy limit
+        rsLoader.setTargetRowCount(10); // set a dummy limit
         rsLoader.startBatch();
         RowSetLoader rootWriter = rsLoader.writer();
+        //KM_TBD: FIx this by changing RecordBatchSizer
+        // set to incoming record count for RecordBatchSizer to work correctly
+        batch.getOutgoingContainer().setRecordCount(recordCount);
         final ExternalColumnSizerImpl externalColumnSizer = new ExternalColumnSizerImpl(batch.getOutgoingContainer());
         rsLoader.setExternalColumnSizer(externalColumnSizer);
         VectorContainer allocedColumsContainer = null;

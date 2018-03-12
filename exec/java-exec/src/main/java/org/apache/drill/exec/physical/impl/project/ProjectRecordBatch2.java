@@ -284,7 +284,7 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
       return false;
     }
     final NameSegment expr = ((SchemaPath)ex.getExpr()).getRootSegment();
-    return expr.getPath().contains(SchemaPath.WILDCARD);
+    return expr.getPath().contains(SchemaPath.DYNAMIC_STAR);
   }
 
   private void setupNewSchemaFromInput(RecordBatch incomingBatch) throws SchemaChangeException {
@@ -557,7 +557,7 @@ public class ProjectRecordBatch2 extends AbstractSingleRecordBatch<Project> {
       final NameSegment expr = ((SchemaPath) ex.getExpr()).getRootSegment();
       final NameSegment ref = ex.getRef().getRootSegment();
       final boolean refHasPrefix = ref.getPath().contains(StarColumnHelper.PREFIX_DELIMITER);
-      final boolean exprContainsStar = expr.getPath().contains(SchemaPath.WILDCARD);
+      final boolean exprContainsStar = expr.getPath().contains(SchemaPath.DYNAMIC_STAR);
 
       if (refHasPrefix || exprContainsStar) {
         needed = true;
