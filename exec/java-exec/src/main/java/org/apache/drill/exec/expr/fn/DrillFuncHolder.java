@@ -38,6 +38,7 @@ import org.apache.drill.exec.expr.ClassGenerator.HoldingContainer;
 import org.apache.drill.exec.expr.DrillFuncHolderExpr;
 import org.apache.drill.exec.expr.TypeHelper;
 import org.apache.drill.exec.expr.annotations.FunctionTemplate.NullHandling;
+import org.apache.drill.exec.expr.fn.output.OutputWidthCalculator;
 import org.apache.drill.exec.expr.holders.ListHolder;
 import org.apache.drill.exec.expr.holders.MapHolder;
 import org.apache.drill.exec.expr.holders.RepeatedMapHolder;
@@ -105,6 +106,7 @@ public abstract class DrillFuncHolder extends AbstractFuncHolder {
   public boolean isNiladic() {
     return attributes.isNiladic();
   }
+
 
   /**
    * Generates string representation of function input parameters:
@@ -291,6 +293,14 @@ public abstract class DrillFuncHolder extends AbstractFuncHolder {
     return attributes.getReturnType().getType(logicalExpressions, attributes);
   }
 
+  public OutputWidthCalculator getOutputWidthCalculator() {
+    return attributes.getOutputWidthCalculatorType().getOutputWidthCalculator();
+  }
+
+  public int variableOuputSizeEstimate(){
+    return attributes.variableOutoputSizeEstimate();
+  }
+
   public NullHandling getNullHandling() {
     return attributes.getNullHandling();
   }
@@ -337,6 +347,4 @@ public abstract class DrillFuncHolder extends AbstractFuncHolder {
         + ", parameters=" + (attributes.getParameters() != null ?
         Arrays.asList(attributes.getParameters()).subList(0, Math.min(attributes.getParameters().length, maxLen)) : null) + "]";
   }
-
-
 }
