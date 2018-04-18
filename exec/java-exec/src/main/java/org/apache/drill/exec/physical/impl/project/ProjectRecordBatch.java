@@ -75,6 +75,12 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ProjectRecordBatch.class);
   private Projector projector;
   private List<ValueVector> allocationVectors;
+
+  public List<LogicalExpression> getOutputExpressions() {
+    return outputExpressions;
+  }
+
+  private List<LogicalExpression> outputExpressions; //list of expressions, corresponding to each output field
   private List<ComplexWriter> complexWriters;
   private List<FieldReference> complexFieldReferencesList;
   private boolean hasRemainder = false;
@@ -195,7 +201,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
       return IterOutcome.OUT_OF_MEMORY;
     }
 
-    final int outputRecords = projector.projectRecords(0, incomingRecordCount, 0);
+    final int outputRecords = projector.projectRecords(this,0, incomingRecordCount, 0);
     if (outputRecords < incomingRecordCount) {
       setValueCount(outputRecords);
       hasRemainder = true;
@@ -223,7 +229,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
       outOfMemory = true;
       return;
     }
-    final int projRecords = projector.projectRecords(remainderIndex, remainingRecordCount, 0);
+    final int projRecords = projector.projectRecords(this, remainderIndex, remainingRecordCount, 0);
     if (projRecords < remainingRecordCount) {
       setValueCount(projRecords);
       this.recordCount = projRecords;
@@ -310,6 +316,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
       }
     }
     this.allocationVectors = Lists.newArrayList();
+    this.outputExpressions = Lists.newArrayList();
     if (complexWriters != null) {
       container.clear();
     } else {
@@ -502,6 +509,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
           allocationVectors.add(vv);
           final TypedFieldId fid = container.getValueVectorId(SchemaPath.getSimplePath(outputField.getName()));
           final ValueVectorWriteExpression write = new ValueVectorWriteExpression(fid, expr, true);
+          outputExpressions.add(expr);
           final HoldingContainer hc = cg.addExpr(write, ClassGenerator.BlkCreateMode.TRUE_IF_BOUND);
         }
       }
