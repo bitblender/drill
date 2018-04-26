@@ -462,7 +462,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
     final ValueVector vvOut = container.addOrGet(MaterializedField.create(ref.getLastSegment().getNameSegment().getPath(),
                                                                           vectorRead.getMajorType()), callBack);
     final TransferPair tp = vvIn.makeTransferPair(vvOut);
-    memoryManager.addField(vvIn, null, ProjectMemoryManager.OutputColumnType.TRANSFER);
+    memoryManager.addField(vvOut, null, ProjectMemoryManager.OutputColumnType.TRANSFER);
     transfers.add(tp);
     transferFieldIds.add(vectorRead.getFieldId().getFieldIds()[0]);
   }
@@ -492,6 +492,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
           final ValueVector vvOut = container.addOrGet(MaterializedField.create(ref.getAsNamePart().getName(),
                   vvIn.getField().getType()), callBack);
           final TransferPair tp = vvIn.makeTransferPair(vvOut);
+          memoryManager.addField(vvOut, null, ProjectMemoryManager.OutputColumnType.TRANSFER);
           transfers.add(tp);
         }
       } else if (value != null && value > 1) { // subsequent wildcards should do a copy of incoming valuevectors
