@@ -55,7 +55,6 @@ import org.apache.drill.exec.record.AbstractSingleRecordBatch;
 import org.apache.drill.exec.record.BatchSchema.SelectionVectorMode;
 import org.apache.drill.exec.record.MaterializedField;
 import org.apache.drill.exec.record.RecordBatch;
-import org.apache.drill.exec.record.RecordBatchSizer;
 import org.apache.drill.exec.record.SimpleRecordBatch;
 import org.apache.drill.exec.record.TransferPair;
 import org.apache.drill.exec.record.TypedFieldId;
@@ -225,9 +224,6 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
     if (complexWriters != null) {
       container.buildSchema(SelectionVectorMode.NONE);
     }
-
-    RecordBatchSizer outputBatchSizer = new RecordBatchSizer(this);
-    System.out.println("Total output batch size " + outputBatchSizer.actualSize());
 
     return IterOutcome.OK;
   }
