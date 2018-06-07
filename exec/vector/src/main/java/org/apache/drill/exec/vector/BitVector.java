@@ -310,7 +310,11 @@ public final class BitVector extends BaseDataValueVector implements FixedWidthVe
         target.data.setByte(i, (((this.data.getByte(firstByte + i) & 0xFF) >>> offset) + (this.data.getByte(firstByte + i + 1) <<  (8 - offset))));
       }
       if (length % 8 != 0) {
-        target.data.setByte(byteSize - 1, ((this.data.getByte(firstByte + byteSize - 1) & 0xFF) >>> offset));
+        //target.data.setByte(byteSize - 1, ((this.data.getByte(firstByte + byteSize - 1) & 0xFF) >>> offset));
+        int bitsToRead = (length % 8) - (8 - offset);
+        int bitsToShift = 8 - bitsToRead;
+        target.data.setByte(byteSize - 1, ((this.data.getByte(firstByte + byteSize - 1) & 0xFF) >>> bitsToShift));
+
       } else {
         target.data.setByte(byteSize - 1,
             (((this.data.getByte(firstByte + byteSize - 1) & 0xFF) >>> offset) + (this.data.getByte(firstByte + byteSize) <<  (8 - offset))));
