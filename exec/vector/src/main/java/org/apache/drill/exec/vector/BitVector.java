@@ -285,20 +285,20 @@ public final class BitVector extends BaseDataValueVector implements FixedWidthVe
 
   public void splitAndTransferTo(int startIndex, int length, BitVector target) {
     assert startIndex + length <= valueCount;
-    int firstByte = getByteIndex(startIndex);
-    int byteSize = getSizeFromCount(length);
-    int offset = startIndex % 8;
-    if (offset == 0) {
+    int firstByteIndex = getByteIndex(startIndex);
+    int bytesToRead = getSizeFromCount(length);
+    int firstBitOffset = startIndex % 8; // Offset of first src bit within the first src byte
+    if (firstBitOffset == 0) {
       target.clear();
       // slice
       if (target.data != null) {
         target.data.release();
       }
-      target.data = data.slice(firstByte, byteSize);
+      target.data = data.slice(firstByteIndex, bytesToRead);
       target.data.retain(1);
     } else {
       // Copy data
-      // When the first bit starts from the middle of a byte (offset != 0), copy data from src BitVector.
+      // When the first bit starts from the middle of a byte (firstBitOffset != 0), copy data from src BitVector.
       // Each byte in the target is composed by a part in i-th byte, another part in (i+1)-th byte.
       // The last byte copied to target is a bit tricky :
       //   1) if length requires partly byte (length % 8 !=0), copy the remaining bits only.
@@ -306,18 +306,29 @@ public final class BitVector extends BaseDataValueVector implements FixedWidthVe
       target.clear();
       target.allocateNew(length);
       // TODO maybe do this one word at a time, rather than byte?
-      for(int i = 0; i < byteSize - 1; i++) {
-        target.data.setByte(i, (((this.data.getByte(firstByte + i) & 0xFF) >>> offset) + (this.data.getByte(firstByte + i + 1) <<  (8 - offset))));
-      }
-      if (length % 8 != 0) {
-        //target.data.setByte(byteSize - 1, ((this.data.getByte(firstByte + byteSize - 1) & 0xFF) >>> offset));
-        int bitsToRead = (length % 8) - (8 - offset);
-        int bitsToShift = 8 - bitsToRead;
-        target.data.setByte(byteSize - 1, ((this.data.getByte(firstByte + byteSize - 1) & 0xFF) >>> bitsToShift));
 
+      byte byteI, byteIPlus1 = 0;
+      for(int i = 0; i < bytesToRead - 1; i++) {
+        byteI = this.data.getByte(firstByteIndex + i);
+        byteIPlus1 = this.data.getByte(firstByteIndex + i + 1);
+        target.data.setByte(i, (((byteI & 0xFF) >>> firstBitOffset) + (byteIPlus1 <<  (8 - firstBitOffset))));
+      }
+      byte lastButOneByte = 0;
+      byte bitsFromLastButOneByte = 0;
+      if (firstBitOffset != 0) {
+        lastButOneByte = byteIPlus1;
+        bitsFromLastButOneByte = (byte)((lastButOneByte & 0xFF) >>> firstBitOffset);
+      }
+
+      if (length % 8 != 0) {
+        //target.data.setByte(bytesToRead - 1, ((this.data.getByte(firstByteIndex + bytesToRead - 1) & 0xFF) >>> firstBitOffset));
+        int bitsToRead = (length % 8) - (8 - firstBitOffset);
+        int bitsToShift = 8 - bitsToRead;
+        final int bitsFromLastByte = (this.data.getByte(firstByteIndex + bytesToRead - 1) & 0xFF) >>> bitsToShift;
+        target.data.setByte(bytesToRead - 1, bitsFromLastButOneByte + (bitsFromLastByte << (8 - firstBitOffset)));
       } else {
-        target.data.setByte(byteSize - 1,
-            (((this.data.getByte(firstByte + byteSize - 1) & 0xFF) >>> offset) + (this.data.getByte(firstByte + byteSize) <<  (8 - offset))));
+        target.data.setByte(bytesToRead - 1,
+            (((this.data.getByte(firstByteIndex + bytesToRead - 1) & 0xFF) >>> firstBitOffset) + (this.data.getByte(firstByteIndex + bytesToRead) <<  (8 - firstBitOffset))));
       }
     }
     target.getMutator().setValueCount(length);

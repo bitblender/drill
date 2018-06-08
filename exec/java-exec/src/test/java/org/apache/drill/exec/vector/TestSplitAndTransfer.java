@@ -17,10 +17,6 @@
  */
 package org.apache.drill.exec.vector;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
 import org.apache.drill.common.config.DrillConfig;
 import org.apache.drill.common.types.TypeProtos.MinorType;
 import org.apache.drill.common.types.Types;
@@ -30,6 +26,8 @@ import org.apache.drill.exec.record.MaterializedField;
 import org.apache.drill.exec.record.TransferPair;
 import org.apache.drill.exec.vector.NullableVarCharVector.Accessor;
 import org.junit.Test;
+
+import static org.junit.Assert.*;
 
 public class TestSplitAndTransfer {
   @Test
@@ -75,6 +73,46 @@ public class TestSplitAndTransfer {
     }
 
     varCharVector.close();
+    allocator.close();
+  }
+
+  @Test
+  public void testBitVector() throws Exception {
+    final DrillConfig drillConfig = DrillConfig.create();
+    final BufferAllocator allocator = RootAllocatorFactory.newRoot(drillConfig);
+    final MaterializedField field = MaterializedField.create("field", Types.optional(MinorType.BIT));
+    final BitVector bitVector = new BitVector(field, allocator);
+    bitVector.allocateNew(3443);
+
+    final int valueCount = 3443;
+    final int[] compareArray = new int[valueCount];
+
+    final BitVector.Mutator mutator = bitVector.getMutator();
+    for (int i = 0; i < valueCount; i ++) {
+      mutator.set(i, 1);
+      compareArray[i] = 1;
+    }
+    mutator.setValueCount(valueCount);
+
+    final TransferPair tp = bitVector.getTransferPair(allocator);
+    final BitVector newBitVector = (BitVector) tp.getTo();
+    final BitVector.Accessor accessor = newBitVector.getAccessor();
+    final int[][] startLengths = {{0, 2047}, {2047, 1396}};
+
+    for (final int[] startLength : startLengths) {
+      final int start = startLength[0];
+      final int length = startLength[1];
+      tp.splitAndTransfer(start, length);
+      newBitVector.getMutator().setValueCount(length);
+      for (int i = 0; i < length; i++) {
+          final int expectedValue = compareArray[start + i];
+          System.out.println("i " + i + ", exp " + expectedValue + ", act " + accessor.get(i));
+          assertEquals(expectedValue, accessor.get(i));
+      }
+      newBitVector.clear();
+    }
+
+    bitVector.close();
     allocator.close();
   }
 }
