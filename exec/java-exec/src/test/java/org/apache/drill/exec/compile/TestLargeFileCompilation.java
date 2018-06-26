@@ -29,7 +29,7 @@ import org.junit.rules.TestRule;
 
 @Category({SlowTest.class})
 public class TestLargeFileCompilation extends BaseTestQuery {
-  @Rule public final TestRule TIMEOUT = TestTools.getTimeoutRule(500000); // 500 secs
+  @Rule public final TestRule TIMEOUT = TestTools.getTimeoutRule(200000); // 200 secs
 
   private static final String LARGE_QUERY_GROUP_BY;
 
@@ -49,7 +49,7 @@ public class TestLargeFileCompilation extends BaseTestQuery {
 
   private static final int ITERATION_COUNT = Integer.valueOf(System.getProperty("TestLargeFileCompilation.iteration", "1"));
 
-  private static final int NUM_PROJECT_COLUMNS = 5000;
+  private static final int NUM_PROJECT_COLUMNS = 2500;
 
   private static final int NUM_ORDERBY_COLUMNS = 500;
 
