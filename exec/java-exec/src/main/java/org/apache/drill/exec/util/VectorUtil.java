@@ -194,6 +194,8 @@ public class VectorUtil {
     for (VectorWrapper<?> vw : va) {
       vw.clear();
     }
+
+    logger.info(sb.toString());
   }
 
   private static String expandMapSchema(MaterializedField mapField) {
