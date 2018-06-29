@@ -115,8 +115,8 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
     super(pop, context, incoming);
 
     // get the output batch size from config.
-    int configuredBatchSize = (int) context.getOptions().getOption(ExecConstants.PROJECT_OUTPUT_BATCH_SIZE_VALIDATOR);
-
+    //int configuredBatchSize = (int) context.getOptions().getOption(ExecConstants.PROJECT_OUTPUT_BATCH_SIZE_VALIDATOR);
+    int configuredBatchSize = (int) context.getOptions().getOption(ExecConstants.OUTPUT_BATCH_SIZE_VALIDATOR);
     memoryManager = new ProjectMemoryManager(configuredBatchSize);
   }
 
@@ -431,7 +431,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
               final ValueVector vvOut = container.addOrGet(MaterializedField.create(ref.getAsNamePart().getName(),
                 vvIn.getField().getType()), callBack);
               final TransferPair tp = vvIn.makeTransferPair(vvOut);
-              memoryManager.addTransferField(vvIn, vvIn.getField().getName());
+              memoryManager.addTransferField(vvIn, vvIn.getField().getName(), vvOut.getField().getName());
               transfers.add(tp);
             }
           } else if (value != null && value > 1) { // subsequent wildcards should do a copy of incoming valuevectors
@@ -513,7 +513,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
           container.addOrGet(MaterializedField.create(ref.getLastSegment().getNameSegment().getPath(),
             vectorRead.getMajorType()), callBack);
         final TransferPair tp = vvIn.makeTransferPair(vvOut);
-        memoryManager.addTransferField(vvIn, TypedFieldId.getPath(id, incomingBatch));
+        memoryManager.addTransferField(vvIn, TypedFieldId.getPath(id, incomingBatch), vvOut.getField().getName());
         transfers.add(tp);
         transferFieldIds.add(vectorRead.getFieldId().getFieldIds()[0]);
       } else if (expr instanceof DrillFuncHolderExpr &&
@@ -540,13 +540,13 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
         memoryManager.addComplexField(null); // this will just add an estimate to the row width
       } else {
         // need to do evaluation.
-        final ValueVector vector = container.addOrGet(outputField, callBack);
-        allocationVectors.add(vector);
+        final ValueVector ouputVector = container.addOrGet(outputField, callBack);
+        allocationVectors.add(ouputVector);
         final TypedFieldId fid = container.getValueVectorId(SchemaPath.getSimplePath(outputField.getName()));
-        final boolean useSetSafe = !(vector instanceof FixedWidthVector);
+        final boolean useSetSafe = !(ouputVector instanceof FixedWidthVector);
         final ValueVectorWriteExpression write = new ValueVectorWriteExpression(fid, expr, useSetSafe);
         final HoldingContainer hc = cg.addExpr(write, ClassGenerator.BlkCreateMode.TRUE_IF_BOUND);
-        memoryManager.addNewField(vector, write);
+        memoryManager.addNewField(ouputVector, write);
 
         // We cannot do multiple transfers from the same vector. However we still need to instantiate the output vector.
         if (expr instanceof ValueVectorReadExpression) {
@@ -555,7 +555,7 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
             final TypedFieldId id = vectorRead.getFieldId();
             final ValueVector vvIn = incomingBatch.getValueAccessorById(id.getIntermediateClass(),
                     id.getFieldIds()).getValueVector();
-            vvIn.makeTransferPair(vector);
+            vvIn.makeTransferPair(ouputVector);
           }
         }
       }
