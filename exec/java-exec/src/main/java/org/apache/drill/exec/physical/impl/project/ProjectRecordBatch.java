@@ -362,6 +362,10 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
 
   private void setupNewSchemaFromInput(RecordBatch incomingBatch) throws SchemaChangeException {
     long setupNewSchemaStartTime = System.currentTimeMillis();
+    // get the output batch size from config.
+    //int configuredBatchSize = (int) context.getOptions().getOption(ExecConstants.PROJECT_OUTPUT_BATCH_SIZE_VALIDATOR);
+    int configuredBatchSize = (int) context.getOptions().getOption(ExecConstants.OUTPUT_BATCH_SIZE_VALIDATOR);
+    memoryManager = new ProjectMemoryManager(configuredBatchSize);
     memoryManager.init(incomingBatch, this);
     if (allocationVectors != null) {
       for (final ValueVector v : allocationVectors) {
@@ -574,10 +578,6 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
 
   @Override
   protected boolean setupNewSchema() throws SchemaChangeException {
-    // get the output batch size from config.
-    //int configuredBatchSize = (int) context.getOptions().getOption(ExecConstants.PROJECT_OUTPUT_BATCH_SIZE_VALIDATOR);
-    int configuredBatchSize = (int) context.getOptions().getOption(ExecConstants.OUTPUT_BATCH_SIZE_VALIDATOR);
-    memoryManager = new ProjectMemoryManager(configuredBatchSize);
     setupNewSchemaFromInput(this.incoming);
     if (container.isSchemaChanged() || callBack.getSchemaChangedAndReset()) {
       container.buildSchema(SelectionVectorMode.NONE);
