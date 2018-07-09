@@ -113,11 +113,6 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
 
   public ProjectRecordBatch(final Project pop, final RecordBatch incoming, final FragmentContext context) throws OutOfMemoryException {
     super(pop, context, incoming);
-
-    // get the output batch size from config.
-    //int configuredBatchSize = (int) context.getOptions().getOption(ExecConstants.PROJECT_OUTPUT_BATCH_SIZE_VALIDATOR);
-    int configuredBatchSize = (int) context.getOptions().getOption(ExecConstants.OUTPUT_BATCH_SIZE_VALIDATOR);
-    memoryManager = new ProjectMemoryManager(configuredBatchSize);
   }
 
   @Override
@@ -579,6 +574,10 @@ public class ProjectRecordBatch extends AbstractSingleRecordBatch<Project> {
 
   @Override
   protected boolean setupNewSchema() throws SchemaChangeException {
+    // get the output batch size from config.
+    //int configuredBatchSize = (int) context.getOptions().getOption(ExecConstants.PROJECT_OUTPUT_BATCH_SIZE_VALIDATOR);
+    int configuredBatchSize = (int) context.getOptions().getOption(ExecConstants.OUTPUT_BATCH_SIZE_VALIDATOR);
+    memoryManager = new ProjectMemoryManager(configuredBatchSize);
     setupNewSchemaFromInput(this.incoming);
     if (container.isSchemaChanged() || callBack.getSchemaChangedAndReset()) {
       container.buildSchema(SelectionVectorMode.NONE);
