@@ -60,10 +60,4 @@
   </root>
 
 
-  <logger name="org.apache.drill.exec.physical.impl.project" additivity="false">
-    <level value="trace" />
-    <appender-ref ref="STDOUT" />
-  </logger>
-
-
 </configuration>
