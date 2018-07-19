@@ -340,6 +340,14 @@ public final class BitVector extends BaseDataValueVector implements FixedWidthVe
       }
     }
     target.getMutator().setValueCount(length);
+
+    for (int i = 0; i < length; i++) {
+      if (target.getAccessor().get(i) != 1) {
+        System.out.println("fail at index " + i);
+        assert false;
+      }
+    }
+
   }
 
   private class TransferImpl implements TransferPair {
