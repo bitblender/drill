@@ -21,7 +21,11 @@ package org.apache.drill;
 import ch.qos.logback.classic.Level;
 import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.compile.ClassBuilder;
-import org.apache.drill.test.*;
+import org.apache.drill.test.DrillTest;
+import org.apache.drill.test.BaseDirTestWatcher;
+import org.apache.drill.test.LogFixture;
+import org.apache.drill.test.TestTools;
+
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.DisableOnDebug;
