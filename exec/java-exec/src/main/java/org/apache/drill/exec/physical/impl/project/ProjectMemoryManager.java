@@ -127,7 +127,7 @@ public class ProjectMemoryManager extends RecordBatchMemoryManager {
     }
 
     public ProjectMemoryManager(int configuredOutputSize) {
-        super(configuredOutputSize);
+        super(131072);
         outputColumnSizes = new HashMap<>();
         logger.debug("BATCH_STATS, configuredOutputSize: {}", configuredOutputSize);
     }
