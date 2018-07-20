@@ -21,6 +21,8 @@ package org.apache.drill;
 import ch.qos.logback.classic.Level;
 import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.compile.ClassBuilder;
+import org.apache.drill.test.ClientFixture;
+import org.apache.drill.test.ClusterFixture;
 import org.apache.drill.test.DrillTest;
 import org.apache.drill.test.BaseDirTestWatcher;
 import org.apache.drill.test.LogFixture;
