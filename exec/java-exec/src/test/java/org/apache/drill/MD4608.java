@@ -59,9 +59,7 @@ public class MD4608 extends DrillTest {
          ClientFixture client = cluster.clientFixture()) {
       cluster.defineWorkspace("dfs", "data", "/Users/karthik/work/bugs/", "csv");
       //String sql = "select BooleanValue as foo from dfs.data.`MD4608/alltypes_small_1MB_1GB.parquet`";
-      String sql = "select age(cast(to_date(cast(cume_dist(length(substr(concat(BinaryValue, VarcharValue),10,8000))) over (order by Index) as Integer)) as Timestamp), '2018-05-10') IntervalSecondValuea, 'Fq7gIk2x1FPI8nQUXG7SqBcXKx7ocIBa17CNC9KWtrlW7gZykOfHVQhipHs5C5DDAZWhb0EwxnEX16TA7Eb6HTC1 wMr3w0sPhVG' " +
-              "NewCharacterValue, Index, BigIntValue, BooleanValue, DateValue, FloatValue, DoubleValue, NullValue, IntegerValue, TimeValue, TimestampValue, IntervalYearValue, IntervalDayValue, IntervalSecondValue, age(cast(to_date(cast(cume_dist(length(substr(concat(BinaryValue, VarcharValue),10,8000))) over " +
-              "(order by Index) as Integer)) as Timestamp), '2018-05-10') IntervalSecondValueb from (select * from dfs.data.`MD4608/alltypes_small_1MB_1GB.parquet` order by BigIntvalue) where Index = 1";
+      String sql = "select * from (select age(cast(to_date(cast(cume_dist(length(substr(concat(BinaryValue, VarcharValue),10,8000))) over (order by Index) as Integer)) as Timestamp), '2018-05-10') IntervalSecondValuea, 'Fq7gIk2x1FPI8nQUXG7SqBcXKx7ocIBa17CNC9KWtrlW7gZykOfHVQhipHs5C5DDAZWhb0EwxnEX16TA7Eb6HTC1 wMr3w0sPhVG' NewCharacterValue, Index, BigIntValue, BooleanValue, DateValue, FloatValue, DoubleValue, NullValue, IntegerValue, TimeValue, TimestampValue, IntervalYearValue, IntervalDayValue, IntervalSecondValue, age(cast(to_date(cast(cume_dist(length(substr(concat(BinaryValue, VarcharValue),10,8000))) over (order by Index) as Integer)) as Timestamp), '2018-05-10') IntervalSecondValueb from (select * from dfs.data.`/MD4608/alltypes_small_1MB_1GB.parquet` order by BigIntvalue)) d where d.Index = 1";
       client.queryBuilder().sql(sql).printCsv();
     }
   }
