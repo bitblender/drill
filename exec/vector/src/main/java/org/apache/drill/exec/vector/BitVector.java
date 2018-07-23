@@ -343,7 +343,8 @@ public final class BitVector extends BaseDataValueVector implements FixedWidthVe
 
     for (int i = 0; i < length; i++) {
       if (target.getAccessor().get(i) != 1) {
-        System.out.println("fail at index " + i + " src " + this.accessor.get(i));
+        System.out.println("fail at index " + i + " src " + this.accessor.get(startIndex + i));
+        System.out.println("si " + startIndex + "len " + length + " vc " + valueCount + " fbi " + firstByteIndex);
         assert false;
       }
     }
