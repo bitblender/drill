@@ -173,7 +173,9 @@ public class ProjectMemoryManager extends RecordBatchMemoryManager {
         if (isVariableWidth) {
             throw new IllegalArgumentException("getWidthOfFixedWidthType() cannot handle variable width types");
         }
+        if (minorType == MinorType.NULL) { return 0; }
         return TypeHelper.getSize(majorType);
+
         //final boolean isOptional = (mode == DataMode.OPTIONAL);
         //final boolean isRepeated = (mode == DataMode.REPEATED);
         //final boolean isRepeatedList = false; // repeated
