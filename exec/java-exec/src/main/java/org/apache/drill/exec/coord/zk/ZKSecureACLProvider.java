@@ -40,7 +40,7 @@ public class ZKSecureACLProvider implements ZKACLProvider {
     /**
      * DEFAULT_ACL gives the creator of a znode full-access to it
      */
-    static ImmutableList<ACL> DEFAULT_ACL = new ImmutableList.Builder<ACL>()
+    private static final ImmutableList<ACL> DEFAULT_ACL = new ImmutableList.Builder<ACL>()
                                               .addAll(Ids.CREATOR_ALL_ACL.iterator())
                                               .build();
     /**
@@ -48,14 +48,14 @@ public class ZKSecureACLProvider implements ZKACLProvider {
      * Used on the Drillbit discovery znode (znode path /<drill.exec.zk.root>/<drill.exec.cluster-id>)
      * i.e. the node that contains the list of Drillbits in the cluster.
      */
-     static ImmutableList<ACL> DRILL_CLUSTER_ACL = new ImmutableList.Builder<ACL>()
+     private static final ImmutableList<ACL> DRILL_CLUSTER_ACL = new ImmutableList.Builder<ACL>()
                                                 .addAll(Ids.READ_ACL_UNSAFE.iterator())
                                                 .addAll(Ids.CREATOR_ALL_ACL.iterator())
                                                 .build();
     final String drillClusterPath;
 
-    public ZKSecureACLProvider(ZKACLContextProvider state) {
-        this.drillClusterPath = state.getClusterPath();
+    public ZKSecureACLProvider(ZKACLContextProvider contextProvider) {
+        this.drillClusterPath = contextProvider.getClusterPath();
     }
 
     @Override
@@ -66,7 +66,7 @@ public class ZKSecureACLProvider implements ZKACLProvider {
     @Override
     public List<ACL> getDrillAclForPath(String path) {
         logger.trace("getAclForPath " + path);
-        if(path.startsWith(drillClusterPath)) {
+        if (path.startsWith(drillClusterPath)) {
             logger.trace("getAclForPath drillClusterPath " + drillClusterPath);
             return DRILL_CLUSTER_ACL;
         }

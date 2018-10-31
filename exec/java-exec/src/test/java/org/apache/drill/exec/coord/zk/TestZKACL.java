@@ -24,6 +24,7 @@ import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.api.ACLProvider;
 import org.apache.curator.retry.RetryNTimes;
 import org.apache.curator.test.TestingServer;
+import org.apache.drill.categories.SecurityTest;
 import org.apache.drill.common.config.DrillConfig;
 import org.apache.drill.common.scanner.ClassPathScanner;
 import org.apache.drill.common.scanner.persistence.ScanResult;
@@ -36,9 +37,12 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 import java.util.List;
 
+@Ignore("See DRILL-6823")
+@Category(SecurityTest.class)
 public class TestZKACL {
 
   private TestingServer server;
@@ -86,9 +90,7 @@ public class TestZKACL {
   /**
    * Test ACLs on znodes required to discover the cluster
    */
-  // ZK libraries only supports one client instance per-machine per-server and it is cached.
-  // This test will fail when run after other ZK tests that setup the client in a way that will cause this test to fail.
-  @Ignore
+
   @Test
   public void testClusterDiscoveryPaths() {
     try {
@@ -115,7 +117,6 @@ public class TestZKACL {
       Assert.assertArrayEquals("testClusterDiscoveryPaths data mismatch", cluster_config_data, actual);
 
     } catch (Exception e) {
-      e.printStackTrace();
       throw new IllegalStateException("testClusterDiscoveryPaths failed");
     }
   }
@@ -125,7 +126,6 @@ public class TestZKACL {
    */
   // ZK libraries only supports one client instance per-machine per-server and it is cached.
   // This test will fail when run after other ZK tests that setup the client in a way that will cause this test to fail
-  @Ignore
   @Test
   public void testNonClusterDiscoveryPaths() {
     try {
@@ -149,7 +149,6 @@ public class TestZKACL {
       Assert.assertArrayEquals("testNonClusterDiscoveryPaths data mismatch", udf_data, actual);
 
     } catch (Exception e) {
-      e.printStackTrace();
       throw new IllegalStateException("testNonClusterDiscoveryPaths failed");
     }
   }

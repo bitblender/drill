@@ -25,6 +25,10 @@ import java.util.List;
 
 /**
  * This class hides the {@link ZKACLProvider} from Curator-specific functions
+ *
+ * This is done so that ACL Providers have to be aware only about ZK ACLs and the Drill {@link ZKACLProvider} interface
+ * ACL Providers should not be concerned with the framework (Curator) used by Drill to access ZK.
+ * If Drill stops using Curator, then existing {@link ZKACLProvider} implementations will still work.
  */
 
 public class ZKACLProviderDelegate implements ACLProvider {

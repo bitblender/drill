@@ -25,19 +25,18 @@ import org.apache.drill.common.scanner.persistence.ScanResult;
 import org.apache.drill.exec.exception.DrillbitStartupException;
 import org.apache.drill.exec.server.BootStrapContext;
 import org.apache.drill.shaded.guava.com.google.common.base.Strings;
-import java.lang.reflect.InvocationTargetException;
 
 import java.lang.reflect.Constructor;
 import java.util.Collection;
 
 /**
- * This function returns a {@link ZKACLProviderDelegate} which will be used to set ACLs on Drill ZK nodes
+ * This factory returns a {@link ZKACLProviderDelegate} which will be used to set ACLs on Drill ZK nodes
  * If secure ACLs are required, the {@link ZKACLProviderFactory} looks up and instantiates a {@link ZKACLProviderDelegate}
  * specified in the config file. Else it returns the {@link ZKDefaultACLProvider}
  */
 public class ZKACLProviderFactory {
 
-    static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ZKACLProviderFactory.class);
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ZKACLProviderFactory.class);
 
     public static ZKACLProviderDelegate getACLProvider(DrillConfig config, String drillClusterPath, BootStrapContext context)
             throws DrillbitStartupException {
@@ -98,7 +97,7 @@ public class ZKACLProviderFactory {
             try {
               final ZKACLProvider aclProvider = (ZKACLProvider) validConstructor.newInstance(contextProvider);
               return new ZKACLProviderDelegate(aclProvider);
-            } catch (InvocationTargetException | IllegalArgumentException | IllegalAccessException | InstantiationException e ) {
+            } catch (ReflectiveOperationException e ) {
                throw new DrillbitStartupException(
                   String.format("Failed to create and initialize the ZKACLProvider class '%s'",
                                     clazz.getCanonicalName()), e);
