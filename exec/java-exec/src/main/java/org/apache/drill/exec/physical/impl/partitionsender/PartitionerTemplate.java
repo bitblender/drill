@@ -24,6 +24,7 @@ import java.util.List;
 import javax.inject.Named;
 
 import org.apache.drill.common.expression.SchemaPath;
+import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.compile.sig.RuntimeOverridden;
 import org.apache.drill.exec.exception.SchemaChangeException;
 import org.apache.drill.exec.expr.ClassGenerator;
@@ -36,6 +37,7 @@ import org.apache.drill.exec.ops.OperatorContext;
 import org.apache.drill.exec.ops.OperatorStats;
 import org.apache.drill.exec.physical.MinorFragmentEndpoint;
 import org.apache.drill.exec.physical.config.HashPartitionSender;
+import org.apache.drill.exec.physical.impl.SenderMemoryManager;
 import org.apache.drill.exec.physical.impl.common.CodeGenMemberInjector;
 import org.apache.drill.exec.physical.impl.partitionsender.PartitionSenderRootExec.Metric;
 import org.apache.drill.exec.proto.ExecProtos.FragmentHandle;
@@ -69,8 +71,9 @@ public abstract class PartitionerTemplate implements Partitioner {
   private int start;
   private int end;
   private List<OutgoingRecordBatch> outgoingBatches = Lists.newArrayList();
+  private SenderMemoryManager memoryManager;
 
-  private int outgoingRecordBatchSize = DEFAULT_RECORD_BATCH_SIZE;
+  private int outgoingRecordBatchRowCount = DEFAULT_RECORD_BATCH_SIZE;
 
   @Override
   public List<? extends PartitionOutgoingBatch> getOutgoingBatches() {
@@ -101,14 +104,10 @@ public abstract class PartitionerTemplate implements Partitioner {
     this.start = start;
     this.end = end;
     doSetup(context, incoming, null);
-
-    // Half the outgoing record batch size if the number of senders exceeds 1000 to reduce the total amount of memory
-    // allocated.
-    if (popConfig.getDestinations().size() > 1000) {
-      // Always keep the recordCount as (2^x) - 1 to better utilize the memory allocation in ValueVectors
-      outgoingRecordBatchSize = (DEFAULT_RECORD_BATCH_SIZE + 1)/2 - 1;
-    }
-
+    int exchangeBatchSizeLimit = (int) context.getOptions().getOption(ExecConstants.EXCHANGE_BATCH_SIZE_VALIDATOR);
+    this.memoryManager = new SenderMemoryManager(exchangeBatchSizeLimit, incoming);
+    memoryManager.update();
+    outgoingRecordBatchRowCount = memoryManager.getOutputRowCount();
     int fieldId = 0;
     for (MinorFragmentEndpoint destination : popConfig.getDestinations()) {
       // create outgoingBatches only for subset of Destination Points
@@ -189,6 +188,21 @@ public abstract class PartitionerTemplate implements Partitioner {
 
   @Override
   public void partitionBatch(RecordBatch incoming) throws IOException {
+    // This can happen when OK_NEW_SCHEMA is received with a 0 row batch
+    // so when the next non-zero batch is seen, outgoingRecordBatchRowCount needs to be
+    // recalculated and vectors need to be reallocated.
+    if (outgoingRecordBatchRowCount == 0 && incoming.getRecordCount() != 0) {
+      memoryManager.update();
+      outgoingRecordBatchRowCount = memoryManager.getOutputRowCount();
+      for (OutgoingRecordBatch ob : outgoingBatches) {
+        ob.vectorContainer.zeroVectors();
+        ob.vectorContainer.setRecordCount(outgoingRecordBatchRowCount);
+        for (VectorWrapper vw : ob.vectorContainer){
+          vw.getValueVector().setInitialCapacity(outgoingRecordBatchRowCount);
+        }
+        ob.allocateOutgoingRecordBatch();
+      }
+    }
     SelectionVectorMode svMode = incoming.getSchema().getSelectionVectorMode();
 
     // Keeping the for loop inside the case to avoid case evaluation for each record.
@@ -285,7 +299,7 @@ public abstract class PartitionerTemplate implements Partitioner {
       }
       recordCount++;
       totalRecords++;
-      if (recordCount == outgoingRecordBatchSize) {
+      if (recordCount == outgoingRecordBatchRowCount) {
         flush(false);
       }
     }
@@ -373,7 +387,7 @@ public abstract class PartitionerTemplate implements Partitioner {
 
     private void allocateOutgoingRecordBatch() {
       for (VectorWrapper<?> v : vectorContainer) {
-        v.getValueVector().allocateNew();
+        memoryManager.allocate(v.getValueVector(), outgoingRecordBatchRowCount);
       }
     }
 
@@ -390,7 +404,7 @@ public abstract class PartitionerTemplate implements Partitioner {
       for (VectorWrapper<?> v : incoming) {
         // create new vector
         ValueVector outgoingVector = TypeHelper.getNewVector(v.getField(), allocator);
-        outgoingVector.setInitialCapacity(outgoingRecordBatchSize);
+        outgoingVector.setInitialCapacity(outgoingRecordBatchRowCount);
         vectorContainer.add(outgoingVector);
       }
       allocateOutgoingRecordBatch();

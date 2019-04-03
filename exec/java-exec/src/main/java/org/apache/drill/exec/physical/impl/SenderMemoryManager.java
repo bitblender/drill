@@ -20,10 +20,12 @@ package org.apache.drill.exec.physical.impl;
 import org.apache.drill.exec.record.RecordBatch;
 import org.apache.drill.exec.record.RecordBatchMemoryManager;
 import org.apache.drill.exec.record.RecordBatchSizer;
+import org.apache.drill.exec.vector.ValueVector;
 
 public class SenderMemoryManager extends RecordBatchMemoryManager {
   private RecordBatch incomingBatch;
   private int batchSizeLimit;
+  RecordBatchSizer batchSizer;
 
   public SenderMemoryManager(int batchSizeLimit, RecordBatch incomingBatch) {
     super(batchSizeLimit);
@@ -32,10 +34,15 @@ public class SenderMemoryManager extends RecordBatchMemoryManager {
   }
 
   public void update() {
-    RecordBatchSizer batchSizer = new RecordBatchSizer(incomingBatch);
+    batchSizer = new RecordBatchSizer(incomingBatch);
     setRecordBatchSizer(batchSizer);
     int outputRowCount = computeOutputRowCount(batchSizeLimit, batchSizer.getNetRowWidth());
     outputRowCount = Math.min(outputRowCount, batchSizer.rowCount());
     setOutputRowCount(outputRowCount);
+  }
+
+  public void allocate(ValueVector vector, int rowCount) {
+    RecordBatchSizer.ColumnSize columnSize =  batchSizer.getColumn(vector.getField().getName());
+    columnSize.allocateVector(vector, rowCount);
   }
 }
