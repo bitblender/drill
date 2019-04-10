@@ -188,6 +188,21 @@ public abstract class PartitionerTemplate implements Partitioner {
 
   @Override
   public void partitionBatch(RecordBatch incoming) throws IOException {
+    // This can happen when OK_NEW_SCHEMA is received with a 0 row batch
+    // so when the next non-zero batch is seen, outgoingRecordBatchRowCount needs to be
+    // recalculated and vectors need to be reallocated.
+    if (outgoingRecordBatchRowCount == 0 && incoming.getRecordCount() != 0) {
+      memoryManager.update();
+      outgoingRecordBatchRowCount = memoryManager.getOutputRowCount();
+      for (OutgoingRecordBatch ob : outgoingBatches) {
+        ob.vectorContainer.zeroVectors();
+        ob.vectorContainer.setRecordCount(outgoingRecordBatchRowCount);
+        for (VectorWrapper vw : ob.vectorContainer){
+          vw.getValueVector().setInitialCapacity(outgoingRecordBatchRowCount);
+        }
+        ob.allocateOutgoingRecordBatch();
+      }
+    }
     SelectionVectorMode svMode = incoming.getSchema().getSelectionVectorMode();
 
     // Keeping the for loop inside the case to avoid case evaluation for each record.
