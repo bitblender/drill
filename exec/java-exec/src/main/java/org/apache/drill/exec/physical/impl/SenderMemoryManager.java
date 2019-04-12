@@ -23,9 +23,20 @@ import org.apache.drill.exec.record.RecordBatchSizer;
 import org.apache.drill.exec.vector.ValueVector;
 
 public class SenderMemoryManager extends RecordBatchMemoryManager {
+
+  public static enum State {
+    UNINITIALIZED,
+    SETUP,
+    INITIALIZED
+  }
+
   private RecordBatch incomingBatch;
   private int batchSizeLimit;
   RecordBatchSizer batchSizer;
+  private State state = State.UNINITIALIZED;
+
+  public State getState() { return state; }
+  public void setState(State state) { this.state = state; }
 
   public SenderMemoryManager(int batchSizeLimit, RecordBatch incomingBatch) {
     super(batchSizeLimit);

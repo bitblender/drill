@@ -54,6 +54,7 @@ import org.apache.drill.exec.record.selection.SelectionVector2;
 import org.apache.drill.exec.record.selection.SelectionVector4;
 import org.apache.drill.exec.vector.ValueVector;
 
+import org.apache.drill.shaded.guava.com.google.common.base.Preconditions;
 import org.apache.drill.shaded.guava.com.google.common.collect.Lists;
 
 public abstract class PartitionerTemplate implements Partitioner {
@@ -105,9 +106,10 @@ public abstract class PartitionerTemplate implements Partitioner {
     this.end = end;
     doSetup(context, incoming, null);
     int exchangeBatchSizeLimit = (int) context.getOptions().getOption(ExecConstants.EXCHANGE_BATCH_SIZE_VALIDATOR);
-    this.memoryManager = new SenderMemoryManager(exchangeBatchSizeLimit, incoming);
+    memoryManager = new SenderMemoryManager(exchangeBatchSizeLimit, incoming);
     memoryManager.update();
     outgoingRecordBatchRowCount = memoryManager.getOutputRowCount();
+    Preconditions.checkArgument(memoryManager.getState() == SenderMemoryManager.State.UNINITIALIZED);
     int fieldId = 0;
     for (MinorFragmentEndpoint destination : popConfig.getDestinations()) {
       // create outgoingBatches only for subset of Destination Points
@@ -191,9 +193,12 @@ public abstract class PartitionerTemplate implements Partitioner {
     // This can happen when OK_NEW_SCHEMA is received with a 0 row batch
     // so when the next non-zero batch is seen, outgoingRecordBatchRowCount needs to be
     // recalculated and vectors need to be reallocated.
-    if (outgoingRecordBatchRowCount == 0 && incoming.getRecordCount() != 0) {
+    if (memoryManager.getState() == SenderMemoryManager.State.UNINITIALIZED) {
+      memoryManager.setState(SenderMemoryManager.State.SETUP);
+    } else if (memoryManager.getState() == SenderMemoryManager.State.SETUP) {
       memoryManager.update();
       outgoingRecordBatchRowCount = memoryManager.getOutputRowCount();
+      memoryManager.setState(SenderMemoryManager.State.INITIALIZED);
       for (OutgoingRecordBatch ob : outgoingBatches) {
         ob.vectorContainer.zeroVectors();
         ob.vectorContainer.setRecordCount(outgoingRecordBatchRowCount);
@@ -203,6 +208,7 @@ public abstract class PartitionerTemplate implements Partitioner {
         ob.allocateOutgoingRecordBatch();
       }
     }
+
     SelectionVectorMode svMode = incoming.getSchema().getSelectionVectorMode();
 
     // Keeping the for loop inside the case to avoid case evaluation for each record.
