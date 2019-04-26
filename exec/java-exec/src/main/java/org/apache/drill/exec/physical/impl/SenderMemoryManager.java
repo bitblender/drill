@@ -20,14 +20,15 @@ package org.apache.drill.exec.physical.impl;
 import org.apache.drill.exec.record.RecordBatch;
 import org.apache.drill.exec.record.RecordBatchMemoryManager;
 import org.apache.drill.exec.record.RecordBatchSizer;
+import org.apache.drill.exec.record.VectorAccessible;
 import org.apache.drill.exec.vector.ValueVector;
 
 public class SenderMemoryManager extends RecordBatchMemoryManager {
-  private RecordBatch incomingBatch;
+  private VectorAccessible incomingBatch;
   private int batchSizeLimit;
   RecordBatchSizer batchSizer;
 
-  public SenderMemoryManager(int batchSizeLimit, RecordBatch incomingBatch) {
+  public SenderMemoryManager(int batchSizeLimit, VectorAccessible incomingBatch) {
     super(batchSizeLimit);
     this.batchSizeLimit = batchSizeLimit;
     this.incomingBatch = incomingBatch;

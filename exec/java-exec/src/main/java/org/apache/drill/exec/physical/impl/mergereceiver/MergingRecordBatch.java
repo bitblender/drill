@@ -32,6 +32,7 @@ import org.apache.drill.common.expression.ErrorCollectorImpl;
 import org.apache.drill.common.expression.LogicalExpression;
 import org.apache.drill.common.expression.SchemaPath;
 import org.apache.drill.common.logical.data.Order.Ordering;
+import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.compile.sig.GeneratorMapping;
 import org.apache.drill.exec.compile.sig.MappingSet;
 import org.apache.drill.exec.exception.ClassTransformationException;
@@ -47,6 +48,7 @@ import org.apache.drill.exec.ops.FragmentContext;
 import org.apache.drill.exec.ops.MetricDef;
 import org.apache.drill.exec.physical.MinorFragmentEndpoint;
 import org.apache.drill.exec.physical.config.MergingReceiverPOP;
+import org.apache.drill.exec.physical.impl.SenderMemoryManager;
 import org.apache.drill.exec.proto.BitControl.FinishedReceiver;
 import org.apache.drill.exec.proto.BitData;
 import org.apache.drill.exec.proto.ExecProtos.FragmentHandle;
@@ -94,7 +96,9 @@ public class MergingRecordBatch extends AbstractRecordBatch<MergingReceiverPOP> 
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(MergingRecordBatch.class);
   private static final ControlsInjector injector = ControlsInjectorFactory.getInjector(MergingRecordBatch.class);
 
-  private static final int OUTGOING_BATCH_SIZE = 32 * 1024;
+  private int outputBatchRowCount = -1;
+  private final int outputBatchSizeLimit;
+  SenderMemoryManager memoryManager;
 
   private RecordBatchLoader[] batchLoaders;
   private final RawFragmentBatchProvider[] fragProviders;
@@ -137,6 +141,7 @@ public class MergingRecordBatch extends AbstractRecordBatch<MergingReceiverPOP> 
     this.config = config;
     this.inputCounts = new long[config.getNumSenders()];
     this.outputCounts = new long[config.getNumSenders()];
+    this.outputBatchSizeLimit = (int) context.getOptions().getOption(ExecConstants.OUTPUT_BATCH_SIZE_VALIDATOR);
 
     // Register this operator's buffer allocator so that incoming buffers are owned by this allocator
     context.getBuffers().getCollector(config.getOppositeMajorFragmentId()).setAllocator(oContext.getAllocator());
@@ -345,6 +350,8 @@ public class MergingRecordBatch extends AbstractRecordBatch<MergingReceiverPOP> 
         // allocate a new value vector
         outgoingContainer.addOrGet(v.getField());
       }
+      memoryManager = new SenderMemoryManager(outputBatchSizeLimit, batchLoaders[0].getContainer());
+      outputBatchRowCount = memoryManager.getOutputRowCount();
       allocateOutgoing();
 
       outgoingContainer.buildSchema(BatchSchema.SelectionVectorMode.NONE);
@@ -690,12 +697,7 @@ public class MergingRecordBatch extends AbstractRecordBatch<MergingReceiverPOP> 
 
   private void allocateOutgoing() {
     for (final VectorWrapper<?> w : outgoingContainer) {
-      final ValueVector v = w.getValueVector();
-      if (v instanceof FixedWidthVector) {
-        AllocationHelper.allocate(v, OUTGOING_BATCH_SIZE, 1);
-      } else {
-        v.allocateNewSafe();
-      }
+      memoryManager.allocate(w.getValueVector(), outputBatchRowCount);
     }
   }
 
@@ -785,8 +787,8 @@ public class MergingRecordBatch extends AbstractRecordBatch<MergingReceiverPOP> 
    * @param node Reference to the next record to copy from the incoming batches
    */
   private boolean copyRecordToOutgoingBatch(final Node node) {
-    assert outgoingPosition < OUTGOING_BATCH_SIZE
-        : String.format("Outgoing position %d must be less than bath size %d", outgoingPosition, OUTGOING_BATCH_SIZE);
+    assert outgoingPosition < outputBatchRowCount
+        : String.format("Outgoing position %d must be less than bath size %d", outgoingPosition, outputBatchRowCount);
     assert ++outputCounts[node.batchId] <= inputCounts[node.batchId]
         : String.format("Stream %d input count: %d output count %d", node.batchId, inputCounts[node.batchId], outputCounts[node.batchId]);
     final int inIndex = (node.batchId << 16) + node.valueIndex;
@@ -795,8 +797,8 @@ public class MergingRecordBatch extends AbstractRecordBatch<MergingReceiverPOP> 
     } catch (SchemaChangeException e) {
       throw new UnsupportedOperationException(e);
     }
-    if (++outgoingPosition == OUTGOING_BATCH_SIZE) {
-      logger.debug("Outgoing vectors space is full (batch size {}).", OUTGOING_BATCH_SIZE);
+    if (++outgoingPosition == outputBatchRowCount) {
+      logger.debug("Outgoing vectors space is full (batch size {}).", outputBatchRowCount);
       return false;
     }
     return true;

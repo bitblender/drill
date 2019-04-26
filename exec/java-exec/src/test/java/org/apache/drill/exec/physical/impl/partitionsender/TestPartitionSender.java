@@ -298,7 +298,7 @@ public class TestPartitionSender extends PlanTestBase {
           final List<MetricValue> metrics = oPBuilder.getMetricList();
           for ( MetricValue metric : metrics) {
             if ( Metric.BYTES_SENT.metricId() == metric.getMetricId() ) {
-              assertEquals("Should add metricValue irrespective of exception", 5*actualThreads, metric.getLongValue());
+              assertEquals("Should add metricValue irrespective of exceoption", 5*actualThreads, metric.getLongValue());
             }
             if (Metric.SENDING_THREADS_COUNT.metricId() == metric.getMetricId()) {
               assertEquals(actualThreads, metric.getLongValue());
